@@ -18,7 +18,7 @@ Validated configuration: GLM-5.3-Flash W8A8 with INT8 MLA cache, BF16 pooled ind
 
 ## Validation
 
-- Latest-main CPU follow-up: **1,275 passed, 25 skipped** by latest outcome per distinct test; full repository formatting checks passed on Pro AI. [Compatibility changes, commands and receipts](ci-main-20261103/README.md). The earlier r2 CPU receipts remain archived below.
+- Corrected-head hosted CI: **15,547 passed / 109 skipped** on vLLM main and **15,524 passed / 129 skipped** on vLLM v0.32.0. Pre-commit and complete mypy for Python 3.10/3.11/3.12 passed. [Compatibility changes and receipts](ci-main-20261103/README.md). Selected/device tests await a maintainer label.
 - Supplemental native main page-spec checks: 3 passed for MLA, pooled indexer and private tail descriptors; these are packaged separately from repository tests.
 - Paired NPU measurements on the measured revision (archived separately), before the subsequent test, diagnostic-log, dead-code and documentation cleanup. No model reload was performed for this review. Measurements use the same pinned framework and dependency versions. Both A and B retain the native Store and P/D connectors. A uses the baseline implementation; B adds the measured feature revision.
 - GSM8K: all 1,319 questions per arm and workload, 5-shot native lm-eval scoring, temperature 0, seed 1024, output budget 8,192 and concurrency 16.

@@ -4,7 +4,7 @@ PR: [#20755](https://github.com/vllm-project/vllm-ascend/pull/20755).
 
 - Ascend main integrated: `219f44cabdca9957ee771fb0559ab30f1f71c4e5`.
 - Verified vLLM pin: `24420b7a341af37a9bc3186e6fc6062512e0aa58`.
-- PR head: `9951818a65f6cb15997832b36cdd39f3511f84bc`.
+- Compatibility fix head: `9951818a65f6cb15997832b36cdd39f3511f84bc`; circular-test correction: `a69cadf34689e07f7665353f454b9d1553de9a2f`.
 - Validation ran in the existing Pro AI CPU container without NPU devices. Model services were not restarted.
 
 ## Changes
@@ -63,3 +63,30 @@ mypy --follow-imports skip --check-untyped-defs --python-version 3.12 tests
 ```
 
 The earlier NPU quality and performance tables remain measurements of the archived r1 build. No NPU/model experiment was repeated for this compatibility update.
+
+
+## Hosted CI follow-up
+
+[Run 41604522827](https://github.com/vllm-project/vllm-ascend/actions/runs/41604522827) passed pre-commit and complete mypy checks for Python 3.10, 3.11 and 3.12 (production, examples and tests). The local optional-extension typing error did not occur in the official lint environment.
+
+Both CPU matrices found the same two obsolete cases in `tests/ut/core/test_circular_buffer.py`, which still expected every circular slot to become PAD. Main pin: 15,545 passed, 2 failed, 109 skipped. Release v0.32.0: 15,522 passed, 2 failed, 129 skipped.
+
+The test-only correction checks wrapped draft positions, padding and dispatch to the native circular mapping kernel. Production mapping code is unchanged. Pro AI checks: [19 circular/block-table cases passed](circular-fixed.log); the final complete-fixture refinement passed [all 5 circular cases](circular-final.log). [File-level repository checks passed](circular-format.log). The corrected head passed both hosted CPU matrices; final results are below.
+
+
+## Corrected-head hosted result
+
+[Run 41607760523](https://github.com/vllm-project/vllm-ascend/actions/runs/41607760523), head `a69cadf34689e07f7665353f454b9d1553de9a2f`:
+
+| Check | Result |
+| --- | --- |
+| Pre-commit, including complete mypy for Python 3.10/3.11/3.12 | Passed |
+| CPU UT, vLLM main `24420b7a` | **15,547 passed, 109 skipped** |
+| CPU UT, vLLM `v0.32.0` | **15,524 passed, 129 skipped** |
+| Documentation links | Passed |
+| Selected/device tests | Not run; require a maintainer run-enabling label |
+| Overall CI gate | Blocked only by the missing run-enabling label |
+
+[Machine-readable summary](hosted-ci-summary.json). No local model service was restarted. The historical NPU measurements above remain unchanged.
+
+The [final gate log](https://github.com/vllm-project/vllm-ascend/actions/runs/41607760523/job/125830395838) confirms `pre-commit: success`, `cpu-ut: success`, `select-tests: skipped`, and all run-enabling labels false. A maintainer must choose `ready-precise`, `ready-all`, or `main2main` to continue. No label was added by this task.

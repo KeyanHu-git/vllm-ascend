@@ -1,0 +1,40 @@
+{
+  "head": "a69cadf34689e07f7665353f454b9d1553de9a2f",
+  "run_url": "https://github.com/vllm-project/vllm-ascend/actions/runs/41607760523",
+  "pre_commit": {
+    "status": "success",
+    "job_id": 125821752943,
+    "mypy_python_versions": [
+      "3.10",
+      "3.11",
+      "3.12"
+    ]
+  },
+  "cpu": [
+    {
+      "vllm": "24420b7a341af37a9bc3186e6fc6062512e0aa58",
+      "job_id": 125824520208,
+      "status": "success",
+      "passed": 15547,
+      "skipped": 109,
+      "warnings": 27,
+      "seconds": 256.29
+    },
+    {
+      "vllm": "v0.32.0",
+      "job_id": 125824520192,
+      "status": "success",
+      "passed": 15524,
+      "skipped": 129,
+      "warnings": 27,
+      "seconds": 344.18
+    }
+  ],
+  "select_tests": "skipped",
+  "gate": {
+    "status": "failure",
+    "job_id": 125830395838,
+    "reason": "Source changes require a maintainer run-enabling label; ready-precise/ready-all/main2main are absent."
+  },
+  "docs_link_check": "success"
+}
