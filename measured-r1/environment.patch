@@ -1,0 +1,34 @@
+--- a/vllm_ascend/patch/platform/patch_kv_cache_dtype.py
++++ b/vllm_ascend/patch/platform/patch_kv_cache_dtype.py
+@@ -40,10 +40,13 @@
+ 
+ import typing
+ 
++import torch
++
+ import pydantic.dataclasses as _pdc
+ from vllm.config import cache as _cache_mod
+-from vllm.config.cache import CacheConfig
++from vllm.config.cache import CacheConfig, register_kv_cache_dtype
+ from vllm.logger import logger
++from vllm.v1.kv_cache_interface import KVQuantMode
+ 
+ # The upstream Literal that gates ``cache_dtype``. We widen it to also accept
+ # ``"int8"`` (DeepSeek V4 Ascend MLA KV cache dtype) and ``"mxfp8"`` (C8-MXFP
+@@ -118,3 +121,16 @@
+ 
+ 
+ _apply_kv_cache_dtype_int8_patch()
++
++
++@register_kv_cache_dtype("int8")
++class AscendInt8CacheDType:
++    """Keep Ascend INT8 storage and backend-owned quantization on vLLM main."""
++
++    name = "int8"
++
++    def torch_dtype(self) -> torch.dtype:
++        return torch.int8
++
++    def quant_mode(self) -> KVQuantMode:
++        return KVQuantMode.CUSTOM
