@@ -1,0 +1,716 @@
+........................................................................ [ 28%]
+........................................................................ [ 56%]
+.......sss...........s..ss.sssssss...................................... [ 84%]
+.......FF.FF.FF..........................                                [100%]
+=================================== FAILURES ===================================
+_ test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-None-fp8] _
+
+cache_dtype = 'fp8', block_size = None, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+>           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'>
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.<locals>.<lambda> at 0xffff49cf0360>), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -> None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+>           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError
+_ test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-None-int8] _
+
+cache_dtype = 'int8', block_size = None, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+>           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'>
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.<locals>.<lambda> at 0xffff49b21bc0>), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -> None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+>           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError
+_ test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-128-fp8] _
+
+cache_dtype = 'fp8', block_size = 128, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+>           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'>
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.<locals>.<lambda> at 0xffff49b22ca0>), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -> None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+>           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError
+_ test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-128-int8] _
+
+cache_dtype = 'int8', block_size = 128, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+>           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'>
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.<locals>.<lambda> at 0xffff4a1df560>), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -> None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+>           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError
+_ test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-2048-fp8] _
+
+cache_dtype = 'fp8', block_size = 2048, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+>           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'>
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.<locals>.<lambda> at 0xffff49b23100>), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -> None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+>           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError
+_ test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-2048-int8] _
+
+cache_dtype = 'int8', block_size = 2048, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+>           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'>
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.<locals>.<lambda> at 0xffff49b234c0>), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -> None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+>           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError
+=============================== warnings summary ===============================
+../../../usr/local/python3.12.13/lib/python3.12/site-packages/torch/jit/_script.py:362: 14 warnings
+  /usr/local/python3.12.13/lib/python3.12/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+------- generated xml file: /work/results/pr20755/runner-integration.xml -------
+=========================== short test summary info ============================
+FAILED tests/ut/patch/platform/test_patch_mamba_config.py::test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-None-fp8]
+FAILED tests/ut/patch/platform/test_patch_mamba_config.py::test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-None-int8]
+FAILED tests/ut/patch/platform/test_patch_mamba_config.py::test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-128-fp8]
+FAILED tests/ut/patch/platform/test_patch_mamba_config.py::test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-128-int8]
+FAILED tests/ut/patch/platform/test_patch_mamba_config.py::test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-2048-fp8]
+FAILED tests/ut/patch/platform/test_patch_mamba_config.py::test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-2048-int8]
+6 failed, 238 passed, 13 skipped, 14 warnings in 6.84s

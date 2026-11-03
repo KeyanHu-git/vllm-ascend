@@ -1,0 +1,27 @@
+{
+  "runs": [
+    {
+      "run": "cpu-fixed",
+      "passed": 1052,
+      "failed": 0,
+      "skipped": 12
+    },
+    {
+      "run": "runner-integration",
+      "passed": 238,
+      "failed": 6,
+      "skipped": 13
+    },
+    {
+      "run": "mamba-config-fixed",
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "distinct_latest": {
+    "passed": 1275,
+    "failed": 0,
+    "skipped": 25
+  }
+}

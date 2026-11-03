@@ -18,7 +18,7 @@ Validated configuration: GLM-5.3-Flash W8A8 with INT8 MLA cache, BF16 pooled ind
 
 ## Validation
 
-- CPU validation of the reviewed revision: 92 distinct tests passed, covering MTP scheduled-prefix inputs, native Mamba delegation, transfer error handling, checkpoint boundaries and request retirement. Logs and commands are attached.
+- Latest-main CPU follow-up: **1,275 passed, 25 skipped** by latest outcome per distinct test; full repository formatting checks passed on Pro AI. [Compatibility changes, commands and receipts](ci-main-20261103/README.md). The earlier r2 CPU receipts remain archived below.
 - Supplemental native main page-spec checks: 3 passed for MLA, pooled indexer and private tail descriptors; these are packaged separately from repository tests.
 - Paired NPU measurements on the measured revision (archived separately), before the subsequent test, diagnostic-log, dead-code and documentation cleanup. No model reload was performed for this review. Measurements use the same pinned framework and dependency versions. Both A and B retain the native Store and P/D connectors. A uses the baseline implementation; B adds the measured feature revision.
 - GSM8K: all 1,319 questions per arm and workload, 5-shot native lm-eval scoring, temperature 0, seed 1024, output budget 8,192 and concurrency 16.

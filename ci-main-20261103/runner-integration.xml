@@ -1,0 +1,679 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="6" skipped="13" tests="257" time="6.836" timestamp="2026-11-03T08:33:19.945553+00:00" hostname="f2e1dbe0e85d"><testcase classname="tests.ut.worker.test_model_runner_v1.TestPPSequenceParallelLayout" name="test_full_pp_buffers_with_global_sp_enabled" time="0.014" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestPPSequenceParallelLayout" name="test_profile_allocates_full_pp_buffers" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestGlm5MtpGraphMetadata" name="test_mamba_non_spec_decode_graph_dispatch" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestGlm5MtpGraphMetadata" name="test_mamba_prefill_graph_dispatch" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestGlm5MtpGraphMetadata" name="test_partial_prompt_with_state_dispatches_speculative_decode_graph" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDPPaddingPolicy" name="test_each_finegrained_tp_field_requires_uniform_inputs" time="0.091" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDPPaddingPolicy" name="test_imbalanced_and_idle_metadata_use_agreed_graph_mode" time="0.018" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDPPaddingPolicy" name="test_routing_capture_keeps_uniform_eager_inputs" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDPPaddingPolicy" name="test_single_dp_does_not_synchronize" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDPPaddingPolicy" name="test_skip_dp_sync_keeps_local_token_count" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDPPaddingPolicy" name="test_sync_only_pads_for_uniform_input_consumers" time="0.016" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDPPaddingEplb" name="test_dummy_padding_preserves_remote_metadata_for_eplb" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDPPaddingEplb" name="test_imbalanced_dp_ranks_enter_eplb_collectives_together" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDPPaddingEplb" name="test_stage_selection_uses_common_dp_maximum" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDPPaddingEplb" name="test_without_dp_metadata_preserves_local_stage_selection" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDummyRunSlotInvalidation" name="test_backend_metadata_sees_invalidated_dummy_slots" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDummyRunSlotInvalidation" name="test_graph_capture_invalidates_only_v41_active_slots" time="0.170" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDummyRunSlotInvalidation" name="test_padded_dummy_preserves_other_dp_token_counts" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDummyRunSlotInvalidation" name="test_padded_speculative_dummy_preserves_logical_query_lengths" time="0.142" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestMmEncoderOnlyDummyRunEarlyExit" name="test_dummy_run_returns_empty_tensors_without_forward" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestMmEncoderOnlyDummyRunEarlyExit" name="test_dummy_sampler_run_returns_empty_tensor" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDeviceMetadataFullGraphEvents" name="test_dummy_full_uses_external_events_without_global_wait" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDeviceMetadataFullGraphEvents" name="test_full_mode_requires_external_events" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDeviceMetadataFullGraphEvents" name="test_ignores_executor_without_active_submission" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDSparkAuxCaptureMode" name="test_mla_dspark_keeps_raw_stream" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDSparkAuxCaptureMode" name="test_non_dspark_keeps_raw_stream" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDSparkAuxCaptureMode" name="test_qwen3_gqa_dspark_uses_materialized_stream" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_dflash_fit_check_includes_bonus_query" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_dspark_fit_check_uses_its_exact_query_group" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_dspark_overflow_rank_runs_complete_dp_dummy" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_model_backed_overflow_rank_runs_upstream_style_dp_dummy" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_non_model_proposer_does_not_run_dp_dummy" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_overflow_rank_skips_dummy_without_dp" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_padded_overflow_avoids_state_work_without_count_event" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_padded_overflow_preserves_sampled_token_state" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_pp_rank_without_drafter_does_not_apply_local_limit" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_skipped_drafts_prepare_next_async_inputs" time="0.007" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_skipped_drafts_publish_zero_cpu_buffer_when_required" time="0.010" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestDrafterMaxModelLen" name="test_standard_drafter_fit_check_uses_spec_token_count" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestAcceptedTokenSnapshot" name="test_non_align_postprocess_keeps_an_independent_snapshot" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestAcceptedTokenSnapshot" name="test_snapshot_survives_request_replacement_and_backend_reorder" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestAcceptedTokenSnapshot" name="test_sync_respects_snapshot_and_current_batch_ownership" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_a5_sparse_c8_specs_keep_main_and_indexer_layouts_separate" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_a5_sparse_li_c4_specs_keep_main_and_indexer_layouts_separate" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_allocate_kv_cache_uses_layer_spec_for_draft_gqa" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_c8_mxfp_cache_selection_excludes_mla" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_dcp_uses_separate_contiguous_kv_cache" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_deepseek_v4_indexer_keeps_compressed_mla_layout" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_dense_backend_subclass_keeps_non_contiguous_kv_cache" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_dsv4_main_materializes_real_planner_geometry_once" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_full_attention_allocator_layout_is_independent_of_backend_order" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_full_attention_allocator_selects_layout_per_backend" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_hybrid_backing_is_unchanged_when_pa_is_configured" time="0.012" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_hybrid_descriptors_share_standardized_backing_allocation" time="0.012" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_hybrid_mla_cache_uses_logical_kernel_block_shape" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_hybrid_noncontiguous_reshape_uses_per_group_kernel_sizes" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_hybrid_reshape_skips_groups_without_kernel_size" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_hybrid_reshape_skips_runner_only_attention_layers" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_kernel_size_change_reinitializes_with_flat_values" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_kvpp_allocate_and_reshape_views" time="0.009" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_layerwise_mixed_indexer_allocation_and_reshape" time="0.007" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_load_model_budgets_prolog_weights_for_target_and_draft" time="0.013" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_mamba_alignment_excludes_auxiliary_glm_caches" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_matching_single_group_keeps_existing_input_batch" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_mla_rope_modes_and_cache_layers_use_separate_metadata_groups" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_mla_single_raw_backing_excludes_unsupported_prolog_quantization" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_mla_single_raw_backing_selects_layout_by_hardware_and_local_q_heads" time="0.005" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_mla_spec_preserves_block_stride_layout_contract" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_multiple_groups_reinitialize_even_when_sizes_match" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_paged_attention_uses_contiguous_kv_cache" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_pure_gqa_uses_noncontiguous_block_major_kv_cache" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_reinitialize_rejects_cpu_offload" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_reshape_cache_only_uses_upstream_bhnc_axis_order" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_reshape_hybrid_attention_strips_padding_without_block_splitting" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_reshape_kv_cache_uses_layer_spec_for_draft_gqa" time="0.005" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sp_decode_dispatch_keys_are_actually_captured" time="0.006" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sparse_backend_uses_separate_contiguous_kv_cache" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sparse_c8_indexer_owns_quantized_cache_accounting" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sparse_c8_indexer_reuses_raw_cache_from_shared_descriptor" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sparse_indexer_allocates_separate_replicated_cache_tensor" time="0.005" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sparse_indexer_skips_allocation_for_runtime_shared_s_layer" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sparse_layer_allocates_one_packed_turboquant_tensor" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sparse_layer_packs_the_turboquant_main_cache" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sparse_layer_without_indexer_allocates_only_mla_kv_cache" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sparse_li_c4_allocate_and_reshape_scale_views" time="0.004" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_sparse_sfa_and_li_c8_allocate_and_reshape_independently" time="0.007" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_v41_dspark_shares_four_backings_after_rank_shrink" time="0.007" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_v41_layer_outer_buffers_allocate_and_reshape" time="0.006" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerKVCache" name="test_xlite_uses_separate_contiguous_kv_cache" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerEncoderCacheReset" name="test_request_removal_invalidates_offload_history_without_cached_request" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerEncoderCacheReset" name="test_reset_clears_score_encoder_cache_state" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerScoreEncoderCache" name="test_async_copy_keeps_pinned_source_until_event_completes" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerScoreEncoderCache" name="test_new_output_is_staged_on_cpu" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerScoreEncoderCache" name="test_processes_score_cache_migrations_and_frees" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerScoreEncoderCache" name="test_score_cache_disabled_delegates_to_upstream" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerScoreEncoderCache" name="test_tmp_cache_is_released_after_last_request_reference" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerOutputTokenIds" name="test_mtp3_placeholder_metadata_is_preserved_before_sanitizing_forward" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerOutputTokenIds" name="test_placeholder_sanitization_is_scoped_to_current_forward" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerOutputTokenIds" name="test_placeholder_spec_tokens_are_sanitized_only_for_forward" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerOutputTokenIds" name="test_sample_updates_output_token_ids_before_sampler" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerOutputTokenIds" name="test_spec_decode_metadata_keeps_cpu_sources_until_h2d_completes" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerDebugger" name="test_execute_model_skips_dump_start_for_dp_dummy_run" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerDebugger" name="test_execute_model_starts_dump_for_real_batch" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerDebugger" name="test_finalize_dump_data_steps_graph_debugger_without_stop" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerDebugger" name="test_finalize_dump_data_stops_stop_capable_debugger" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerDebugger" name="test_start_dump_data_forwards_kwargs_to_debugger_start" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestNPUModelRunnerDebugger" name="test_start_dump_data_noop_when_already_started" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestCorrectOptimisticSeqLensCpu" name="test_asserts_event_present" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestCorrectOptimisticSeqLensCpu" name="test_synchronizes_before_host_read" time="0.003" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestKVPPExecute" name="test_history_gate_uses_only_actual_requests" time="0.006" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestC8MXFPVScaleCacheFill" name="test_a_layer_without_a_forward_context_entry_is_skipped" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestC8MXFPVScaleCacheFill" name="test_cache_setup_hands_back_a_filled_cache" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestC8MXFPVScaleCacheFill" name="test_every_c8_mxfp_layer_is_filled" time="0.002" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestC8MXFPVScaleCacheFill" name="test_non_c8_zeroing_still_delegates_without_scale_views" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestC8MXFPVScaleCacheFill" name="test_other_backends_are_left_alone" time="0.001" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestC8MXFPVScaleCacheFill" name="test_reassigned_hybrid_page_restores_only_its_static_v_scales" time="0.005" /><testcase classname="tests.ut.worker.test_model_runner_v1.TestC8MXFPVScaleCacheFill" name="test_v1_reshape_uses_flat_kernel_size_and_physical_page_padding" time="0.002" /><testcase classname="tests.ut.worker.test_block_table.TestBlockTableComputeSlotMapping" name="test_compute_slot_mapping_dcp1_interleave1" time="0.002" /><testcase classname="tests.ut.worker.test_block_table.TestBlockTableComputeSlotMapping" name="test_compute_slot_mapping_dcp8_interleave1" time="0.012" /><testcase classname="tests.ut.worker.test_block_table.TestBlockTableComputeSlotMapping" name="test_compute_slot_mapping_dcp8_interleave128" time="0.022" /><testcase classname="tests.ut.worker.test_block_table.TestBlockTableComputeSlotMapping" name="test_compute_slot_mapping_draft_reserves_mtp_slots" time="0.002" /><testcase classname="tests.ut.worker.test_block_table.TestBlockTableComputeSlotMapping" name="test_dsv4_logical_block_ids_are_not_expanded" time="0.002" /><testcase classname="tests.ut.worker.test_block_table.TestBlockTableComputeSlotMapping" name="test_mamba_table_preserves_speculative_capacity_with_dcp" time="0.003" /><testcase classname="tests.ut.worker.test_block_table.TestBlockTableComputeSlotMapping" name="test_rejects_kernel_sizes_that_do_not_divide_physical_block" time="0.002" /><testcase classname="tests.ut.worker.test_block_table.TestBlockTableComputeSlotMapping" name="test_selects_first_kernel_size_that_divides_physical_block" time="0.001" /><testcase classname="tests.ut.worker.test_block_table.TestBlockTableComputeSlotMapping" name="test_virtual_kernel_blocks_expand_physical_block_ids" time="0.002" /><testcase classname="tests.ut.worker.test_block_table.TestMultiGroupBlockTable" name="test_broadcasts_single_kernel_size_to_all_groups" time="0.002" /><testcase classname="tests.ut.worker.test_block_table.TestMultiGroupBlockTable" name="test_defaults_each_group_to_no_virtual_split" time="0.002" /><testcase classname="tests.ut.worker.test_block_table.TestMultiGroupBlockTable" name="test_forwards_flat_kernel_size_to_each_group" time="0.002" /><testcase classname="tests.ut.worker.test_block_table.TestMultiGroupBlockTable" name="test_rejects_mismatched_kernel_size_count" time="0.001" /><testcase classname="tests.ut.worker.test_block_table.TestMultiGroupBlockTable" name="test_rejects_mismatched_max_block_count" time="0.001" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_load_model_retains_split_indexer_metadata_dependency" time="0.004" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order0-mtp]" time="0.007" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order0-eagle3]" time="0.006" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order1-mtp]" time="0.007" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order1-eagle3]" time="0.006" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order2-mtp]" time="0.006" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order2-eagle3]" time="0.007" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order3-mtp]" time="0.006" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order3-eagle3]" time="0.007" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order4-mtp]" time="0.006" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order4-eagle3]" time="0.006" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order5-mtp]" time="0.007" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_cache_only_groups_use_main_backend_and_metadata[group_order5-eagle3]" time="0.006" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer" name="test_prepare_inputs_padded_preserves_internal_seq_lens_cpu" time="0.001" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestSlidingWindowAdapter" name="test_apply_window" time="0.002" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerInitialization" name="test_initialization_draft_model" time="0.090" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerInitialization" name="test_initialization_eagle3_enforce_eager" time="0.067" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerInitialization" name="test_initialization_eagle3_full_graph_async" time="0.067" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerInitialization" name="test_initialization_eagle_graph" time="0.067" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerInitialization" name="test_initialization_mtp_full_graph_async" time="0.067" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerLoadModel" name="test_load_model_multimodal" time="0.001"><skipped type="pytest.skip" message="Skip due to the changes in #7153, fix me later">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:653: Skip due to the changes in #7153, fix me later</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerLoadModel" name="test_load_model_pp1" time="0.001"><skipped type="pytest.skip" message="Skip due to the changes in #7153, fix me later">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:596: Skip due to the changes in #7153, fix me later</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerLoadModel" name="test_load_model_pp_gt1" time="0.001"><skipped type="pytest.skip" message="Skip due to the changes in #7153, fix me later">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:631: Skip due to the changes in #7153, fix me later</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerDummyRun" name="test_dummy_run_basic" time="0.073" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerDummyRun" name="test_dummy_run_in_graph_capture" time="0.074" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerDummyRun" name="test_dummy_run_in_graph_run" time="0.073" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerDummyRun" name="test_dummy_run_with_prefill" time="0.073" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerHelperMethods" name="test_prepare_inputs" time="0.070" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_slot_mapping_group_reserves_mtp_draft_slots" time="0.082" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[eager-qwen_dense-prefill-query_start_loc0-query_start_loc_cpu0-seq_lens0-1-13-13-13-block_table_tensor0-slot_mapping0-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu0-num_computed_tokens_cpu0-4-actual_seq_lengths_q0-positions0-AscendAttentionState.PrefillNoCache--1-13-None]" time="0.092" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[eager-qwen_dense-decode-query_start_loc1-query_start_loc_cpu1-seq_lens1-3-12-4-0-block_table_tensor1-slot_mapping1-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu1-num_computed_tokens_cpu1-4-actual_seq_lengths_q1-positions1-AscendAttentionState.ChunkedPrefill--1-12-None]" time="0.376" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[eager-qwen_dense-decode_and_prefill-query_start_loc2-query_start_loc_cpu2-seq_lens2-3-30-13-0-block_table_tensor2-slot_mapping2-True-None-None-None-None-None-None-_seq_lens_cpu2-None-None-seq_lens_cpu2-num_computed_tokens_cpu2-4-actual_seq_lengths_q2-positions2-AscendAttentionState.ChunkedPrefill--1-30-None]" time="0.093" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[eager-qwen_moe-prefill-query_start_loc0-query_start_loc_cpu0-seq_lens0-1-13-13-13-block_table_tensor0-slot_mapping0-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu0-num_computed_tokens_cpu0-4-actual_seq_lengths_q0-positions0-AscendAttentionState.PrefillNoCache--1-13-None]" time="0.091" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[eager-qwen_moe-decode-query_start_loc1-query_start_loc_cpu1-seq_lens1-3-12-4-0-block_table_tensor1-slot_mapping1-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu1-num_computed_tokens_cpu1-4-actual_seq_lengths_q1-positions1-AscendAttentionState.ChunkedPrefill--1-12-None]" time="0.093" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[eager-qwen_moe-decode_and_prefill-query_start_loc2-query_start_loc_cpu2-seq_lens2-3-30-13-0-block_table_tensor2-slot_mapping2-True-None-None-None-None-None-None-_seq_lens_cpu2-None-None-seq_lens_cpu2-num_computed_tokens_cpu2-4-actual_seq_lengths_q2-positions2-AscendAttentionState.ChunkedPrefill--1-30-None]" time="0.079"><skipped type="pytest.skip" message="decode_and_prefill case only need test once">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:1105: decode_and_prefill case only need test once</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[eager-deepseek-prefill-query_start_loc0-query_start_loc_cpu0-seq_lens0-1-13-13-13-block_table_tensor0-slot_mapping0-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu0-num_computed_tokens_cpu0-4-actual_seq_lengths_q0-positions0-AscendAttentionState.PrefillNoCache--1-13-None]" time="0.099" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[eager-deepseek-decode-query_start_loc1-query_start_loc_cpu1-seq_lens1-3-12-4-0-block_table_tensor1-slot_mapping1-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu1-num_computed_tokens_cpu1-4-actual_seq_lengths_q1-positions1-AscendAttentionState.ChunkedPrefill--1-12-None]" time="0.097" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[eager-deepseek-decode_and_prefill-query_start_loc2-query_start_loc_cpu2-seq_lens2-3-30-13-0-block_table_tensor2-slot_mapping2-True-None-None-None-None-None-None-_seq_lens_cpu2-None-None-seq_lens_cpu2-num_computed_tokens_cpu2-4-actual_seq_lengths_q2-positions2-AscendAttentionState.ChunkedPrefill--1-30-None]" time="0.081"><skipped type="pytest.skip" message="decode_and_prefill case only need test once">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:1105: decode_and_prefill case only need test once</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[full-qwen_dense-prefill-query_start_loc0-query_start_loc_cpu0-seq_lens0-1-13-13-13-block_table_tensor0-slot_mapping0-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu0-num_computed_tokens_cpu0-4-actual_seq_lengths_q0-positions0-AscendAttentionState.PrefillNoCache--1-13-None]" time="0.080"><skipped type="pytest.skip" message="For the entire graph test, only one model needs to be tested to avoid repeated tests.">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:1101: For the entire graph test, only one model needs to be tested to avoid repeated tests.</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[full-qwen_dense-decode-query_start_loc1-query_start_loc_cpu1-seq_lens1-3-12-4-0-block_table_tensor1-slot_mapping1-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu1-num_computed_tokens_cpu1-4-actual_seq_lengths_q1-positions1-AscendAttentionState.ChunkedPrefill--1-12-None]" time="0.093" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[full-qwen_dense-decode_and_prefill-query_start_loc2-query_start_loc_cpu2-seq_lens2-3-30-13-0-block_table_tensor2-slot_mapping2-True-None-None-None-None-None-None-_seq_lens_cpu2-None-None-seq_lens_cpu2-num_computed_tokens_cpu2-4-actual_seq_lengths_q2-positions2-AscendAttentionState.ChunkedPrefill--1-30-None]" time="0.080"><skipped type="pytest.skip" message="For the entire graph test, only one model needs to be tested to avoid repeated tests.">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:1101: For the entire graph test, only one model needs to be tested to avoid repeated tests.</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[full-qwen_moe-prefill-query_start_loc0-query_start_loc_cpu0-seq_lens0-1-13-13-13-block_table_tensor0-slot_mapping0-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu0-num_computed_tokens_cpu0-4-actual_seq_lengths_q0-positions0-AscendAttentionState.PrefillNoCache--1-13-None]" time="0.080"><skipped type="pytest.skip" message="For the entire graph test, only one model needs to be tested to avoid repeated tests.">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:1101: For the entire graph test, only one model needs to be tested to avoid repeated tests.</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[full-qwen_moe-decode-query_start_loc1-query_start_loc_cpu1-seq_lens1-3-12-4-0-block_table_tensor1-slot_mapping1-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu1-num_computed_tokens_cpu1-4-actual_seq_lengths_q1-positions1-AscendAttentionState.ChunkedPrefill--1-12-None]" time="0.080"><skipped type="pytest.skip" message="For the entire graph test, only one model needs to be tested to avoid repeated tests.">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:1101: For the entire graph test, only one model needs to be tested to avoid repeated tests.</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[full-qwen_moe-decode_and_prefill-query_start_loc2-query_start_loc_cpu2-seq_lens2-3-30-13-0-block_table_tensor2-slot_mapping2-True-None-None-None-None-None-None-_seq_lens_cpu2-None-None-seq_lens_cpu2-num_computed_tokens_cpu2-4-actual_seq_lengths_q2-positions2-AscendAttentionState.ChunkedPrefill--1-30-None]" time="0.080"><skipped type="pytest.skip" message="For the entire graph test, only one model needs to be tested to avoid repeated tests.">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:1101: For the entire graph test, only one model needs to be tested to avoid repeated tests.</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[full-deepseek-prefill-query_start_loc0-query_start_loc_cpu0-seq_lens0-1-13-13-13-block_table_tensor0-slot_mapping0-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu0-num_computed_tokens_cpu0-4-actual_seq_lengths_q0-positions0-AscendAttentionState.PrefillNoCache--1-13-None]" time="0.080"><skipped type="pytest.skip" message="For the entire graph test, only one model needs to be tested to avoid repeated tests.">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:1101: For the entire graph test, only one model needs to be tested to avoid repeated tests.</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[full-deepseek-decode-query_start_loc1-query_start_loc_cpu1-seq_lens1-3-12-4-0-block_table_tensor1-slot_mapping1-True-None-None-None-None-None-None-None-None-None-seq_lens_cpu1-num_computed_tokens_cpu1-4-actual_seq_lengths_q1-positions1-AscendAttentionState.ChunkedPrefill--1-12-None]" time="0.080"><skipped type="pytest.skip" message="For the entire graph test, only one model needs to be tested to avoid repeated tests.">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:1101: For the entire graph test, only one model needs to be tested to avoid repeated tests.</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPropose" name="test_propose[full-deepseek-decode_and_prefill-query_start_loc2-query_start_loc_cpu2-seq_lens2-3-30-13-0-block_table_tensor2-slot_mapping2-True-None-None-None-None-None-None-_seq_lens_cpu2-None-None-seq_lens_cpu2-num_computed_tokens_cpu2-4-actual_seq_lengths_q2-positions2-AscendAttentionState.ChunkedPrefill--1-30-None]" time="0.080"><skipped type="pytest.skip" message="For the entire graph test, only one model needs to be tested to avoid repeated tests.">/work/source/pr20755-main/tests/ut/spec_decode/test_eagle_proposer.py:1101: For the entire graph test, only one model needs to be tested to avoid repeated tests.</skipped></testcase><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestPrepareNextTokenIdsPadded" name="test_all_rejected_tokens_with_backup" time="0.070" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestPrepareNextTokenIdsPadded" name="test_all_valid_tokens" time="0.070" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestPrepareNextTokenIdsPadded" name="test_discarded_requests" time="0.383" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestPrepareNextTokenIdsPadded" name="test_intermediate_variables_precision" time="0.071" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestPrepareNextTokenIdsPadded" name="test_mixed_scenario" time="0.070" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestPrepareNextTokenIdsPadded" name="test_partial_rejected_tokens" time="0.070" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestPrepareNextTokenIdsPadded" name="test_single_request" time="0.070" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestPrepareNextTokenIdsPadded" name="test_vocab_size_boundary" time="0.070" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestRunMergedDraft" name="test_run_merged_draft_dflash_uses_first_pass_inputs_and_returns_early" time="0.070" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestRunMergedDraft" name="test_run_merged_draft_eagle3_decode_prepares_each_forward_input" time="0.073" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestRunMergedDraft" name="test_run_merged_draft_early_return_conditions" time="0.071" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestRunMergedDraft" name="test_run_merged_draft_mtp_mrope_graph_and_lmhead_tp_preparation" time="0.073" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestDraftProposerHelperMethods" name="test_set_inputs_first_pass" time="0.071" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPrepareInputs" name="test_prepare_inputs_basic" time="0.068" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPrepareInputs" name="test_prepare_inputs_all_rejected" time="0.067" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPrepareInputsPadded" name="test_prepare_inputs_padded_basic[False--1--1]" time="0.067" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerPrepareInputsPadded" name="test_prepare_inputs_padded_all_rejected[False--1--1]" time="0.071" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerSetInputsFirstPass" name="test_set_inputs_first_pass_default_eagle" time="0.068" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerSetInputsFirstPass" name="test_set_inputs_first_pass_dcp" time="0.069" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerSetInputsFirstPass" name="test_set_inputs_first_pass_parallel_drafting" time="0.069" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestEagleProposerSetInputsFirstPass" name="test_set_inputs_first_pass_draft_model" time="0.069" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestDeepSeekMTPIndicesSharing" name="test_init_mtp_indices_flag" time="0.002" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestDeepSeekMTPIndicesSharing" name="test_maybe_collects_lim_compactor_without_target_buffer" time="0.002" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestDeepSeekMTPIndicesSharing" name="test_maybe_share_topk_indices_submodules" time="0.004" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestDeepSeekMTPIndicesSharing" name="test_run_merge_draft_mtp_sharing_disabled" time="0.003" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestDeepSeekMTPIndicesSharing" name="test_run_merge_draft_mtp_skip_topk" time="0.003" /><testcase classname="tests.ut.spec_decode.test_eagle_proposer.TestDeepSeekMTPIndicesSharing" name="test_run_merge_draft_mtp_skip_topk_without_compact" time="0.003" /><testcase classname="tests.ut.spec_decode.test_extract_hidden_states_proposer" name="test_proposer_initialization" time="0.062" /><testcase classname="tests.ut.spec_decode.test_extract_hidden_states_proposer" name="test_dummy_run_basic" time="0.063" /><testcase classname="tests.ut.spec_decode.test_extract_hidden_states_proposer" name="test_dummy_run_syncs_metadata_across_dp_as_draft_model" time="0.063" /><testcase classname="tests.ut.spec_decode.test_extract_hidden_states_proposer" name="test_prepare_next_token_ids_padded" time="0.062" /><testcase classname="tests.ut.spec_decode.test_extract_hidden_states_proposer" name="test_determine_batch_execution_and_padding_asserts_when_runner_is_none" time="0.062" /><testcase classname="tests.ut.spec_decode.test_extract_hidden_states_proposer" name="test_determine_batch_execution_and_padding_dp1_sp_pads_and_skips_sync" time="0.066" /><testcase classname="tests.ut.spec_decode.test_extract_hidden_states_proposer" name="test_determine_batch_execution_and_padding_dp2_uses_runner_sync[False-NONE-NONE]" time="0.063" /><testcase classname="tests.ut.spec_decode.test_extract_hidden_states_proposer" name="test_determine_batch_execution_and_padding_dp2_uses_runner_sync[True-FULL-FULL]" time="0.063" /><testcase classname="tests.ut.spec_decode.test_extract_hidden_states_proposer" name="test_determine_batch_execution_and_padding_dp2_uses_runner_sync[True-FULL-NONE]" time="0.062" /><testcase classname="tests.ut.spec_decode.test_extract_hidden_states_proposer" name="test_determine_batch_execution_and_padding_dp2_keeps_tp_aligned_for_main_forward" time="0.063" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_sparse_index_kpool_detection_is_model_agnostic" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_dense_model_with_index_kpool_field_uses_generic_layout" time="0.000" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_sparse_indexer_without_kpool_uses_generic_layout" time="0.000" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_active_sparse_index_kpool_requires_valid_ratio[None]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_active_sparse_index_kpool_requires_valid_ratio[0]" time="0.000" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_active_sparse_index_kpool_requires_valid_ratio[1]" time="0.000" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_active_sparse_index_kpool_requires_valid_ratio[4]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_hybrid_config_preserves_noncontiguous_page_sizes" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-None-fp8]" time="0.001"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'">cache_dtype = 'fp8', block_size = None, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+&gt;           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = &lt;class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'&gt;
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.&lt;locals&gt;.&lt;lambda&gt; at 0xffff49cf0360&gt;), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -&gt; None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+&gt;           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError</failure></testcase><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-None-int8]" time="0.001"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'">cache_dtype = 'int8', block_size = None, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+&gt;           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = &lt;class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'&gt;
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.&lt;locals&gt;.&lt;lambda&gt; at 0xffff49b21bc0&gt;), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -&gt; None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+&gt;           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError</failure></testcase><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-None-auto]" time="0.002" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-128-fp8]" time="0.001"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'">cache_dtype = 'fp8', block_size = 128, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+&gt;           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = &lt;class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'&gt;
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.&lt;locals&gt;.&lt;lambda&gt; at 0xffff49b22ca0&gt;), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -&gt; None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+&gt;           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError</failure></testcase><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-128-int8]" time="0.001"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'">cache_dtype = 'int8', block_size = 128, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+&gt;           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = &lt;class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'&gt;
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.&lt;locals&gt;.&lt;lambda&gt; at 0xffff4a1df560&gt;), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -&gt; None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+&gt;           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError</failure></testcase><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-128-auto]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-2048-fp8]" time="0.001"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'">cache_dtype = 'fp8', block_size = 2048, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+&gt;           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = &lt;class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'&gt;
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.&lt;locals&gt;.&lt;lambda&gt; at 0xffff49b23100&gt;), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -&gt; None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+&gt;           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError</failure></testcase><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-2048-int8]" time="0.001"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'">cache_dtype = 'int8', block_size = 2048, use_mla = True
+
+    @pytest.mark.parametrize("cache_dtype", ["fp8", "int8", "auto"])
+    @pytest.mark.parametrize("block_size", [None, 128, 2048])
+    @pytest.mark.parametrize("use_mla", [True, False])
+    def test_kpool_page_alignment_preserves_packed_and_regular_geometry(cache_dtype, block_size, use_mla):
+        config = _config(prefix_caching=True, mamba_cache_mode="align")
+        config.cache_config.cache_dtype = cache_dtype
+        config.cache_config.block_size = block_size
+        config.cache_config.mamba_page_size_padded = None
+        config.parallel_config = SimpleNamespace(tensor_parallel_size=1)
+        config.model_config = SimpleNamespace(
+            architecture="DummyHybridModel",
+            use_mla=use_mla,
+            dtype=torch.bfloat16,
+            max_model_len=4096,
+            hf_text_config=SimpleNamespace(index_topk=2048, index_kpool=4, kv_lora_rank=512, qk_rope_head_dim=64),
+            hf_config=SimpleNamespace(),
+            get_num_kv_heads=lambda _parallel_config: 1 if use_mla else 2,
+            get_head_size=lambda: 128,
+        )
+        dummy_model_cls = SimpleNamespace(
+            get_mamba_state_shape_from_config=lambda _config: ((256, 256), (256, 441)),
+            get_mamba_state_dtype_from_config=lambda _config: (torch.bfloat16, torch.bfloat16),
+        )
+        packed_token_page_size = get_sfa_qsfa_packed_head_dim(512, 64)
+        assert packed_token_page_size == 512 + 64 * 2 + (512 // 128) * 4
+    
+        with patch(
+            "vllm_ascend.patch.platform.patch_mamba_config.ModelRegistry.resolve_model_cls",
+            return_value=(dummy_model_cls, None),
+        ) as resolve:
+&gt;           _run(config)
+
+tests/ut/patch/platform/test_patch_mamba_config.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/ut/patch/platform/test_patch_mamba_config.py:106: in _run
+    HybridAttentionMambaModelConfig.verify_and_update_config(config)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = &lt;class 'vllm.model_executor.models.config.HybridAttentionMambaModelConfig'&gt;
+vllm_config = namespace(scheduler_config=namespace(disable_hybrid_kv_cache_manager=False), kv_transfer_config=None, speculative_conf...s_packed_and_regular_geometry.&lt;locals&gt;.&lt;lambda&gt; at 0xffff49b234c0&gt;), parallel_config=namespace(tensor_parallel_size=1))
+
+    @classmethod
+    def verify_and_update_config(cls, vllm_config) -&gt; None:
+        """
+        Update Hybrid Attention/Mamba cache configuration without forcing
+        attention and Mamba cache page sizes to be equal.
+    
+        Args:
+            vllm_config: vLLM configuration.
+        """
+        using_kv_store_with_hybrid = not vllm_config.scheduler_config.disable_hybrid_kv_cache_manager and _using_kv_store(
+            vllm_config
+        )
+        logger.debug("Using kv store: %s", using_kv_store_with_hybrid)
+        MambaModelConfig.verify_and_update_config(vllm_config)
+    
+        cache_config = vllm_config.cache_config
+        model_config = vllm_config.model_config
+        index_kpool = _get_sparse_index_kpool(model_config)
+        if index_kpool is not None:
+            parallel_config = vllm_config.parallel_config
+            if cache_config.cache_dtype == "auto":
+                kv_cache_dtype = model_config.dtype
+            else:
+                kv_cache_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
+    
+            kernel_block_size = 128
+            model_cls, _ = ModelRegistry.resolve_model_cls(
+                model_config.architecture,
+                model_config=model_config,
+            )
+            mamba_shapes = model_cls.get_mamba_state_shape_from_config(vllm_config)
+            mamba_dtypes = model_cls.get_mamba_state_dtype_from_config(vllm_config)
+            mamba_raw_page_size = sum(
+                math.prod(shape) * get_dtype_size(dtype) for shape, dtype in zip(mamba_shapes, mamba_dtypes)
+            )
+    
+            attn_num_kv_heads = model_config.get_num_kv_heads(parallel_config)
+            if model_config.use_mla:
+                kv_lora_rank = model_config.hf_text_config.kv_lora_rank
+                qk_rope_head_dim = model_config.hf_text_config.qk_rope_head_dim
+                attn_token_page_size = (
+                    (kv_lora_rank + qk_rope_head_dim) * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+                )
+            else:
+                attn_head_size = model_config.get_head_size()
+                attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
+    
+            sfa_c8_packed = model_config.use_mla and _using_sparse_sfa_c8(vllm_config, model_config)
+            if sfa_c8_packed:
+                # A C8-packed SFA page holds one token in kv_lora_rank int8 bytes
+                # plus fp32 scale metadata, roughly half the bf16 page. Size the
+                # shared mamba page from the packed page, otherwise it stays at
+                # bf16 geometry and the C8 capacity gain is lost to padding.
+                from vllm_ascend.attention.utils import get_sfa_qsfa_packed_head_dim
+    
+                attn_token_page_size = get_sfa_qsfa_packed_head_dim(
+                    model_config.hf_text_config.kv_lora_rank,
+                    model_config.hf_text_config.qk_rope_head_dim,
+                )
+    
+            # The compressed indexer storage block is consumed by a CANN kernel
+            # whose block size must be a multiple of 16. Keep the scheduler block
+            # C128-aligned while making block_size / index_kpool C16-aligned too.
+            alignment_tokens = math.lcm(kernel_block_size, index_kpool * 16)
+            min_block_size = cdiv(mamba_raw_page_size, attn_token_page_size)
+            requested_block_size = cache_config.block_size or kernel_block_size
+            attn_block_size = alignment_tokens * cdiv(max(requested_block_size, min_block_size), alignment_tokens)
+&gt;           if sfa_c8_packed and not cache_config.user_specified_block_size:
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'user_specified_block_size'
+
+vllm_ascend/patch/platform/patch_mamba_config.py:127: AttributeError</failure></testcase><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[True-2048-auto]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[False-None-fp8]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[False-None-int8]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[False-None-auto]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[False-128-fp8]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[False-128-int8]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[False-128-auto]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[False-2048-fp8]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[False-2048-int8]" time="0.002" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kpool_page_alignment_preserves_packed_and_regular_geometry[False-2048-auto]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_backend_alignment_preserves_kpool_c8_page_geometry[False-int8]" time="0.002" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_backend_alignment_preserves_kpool_c8_page_geometry[False-fp8]" time="0.002" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_backend_alignment_preserves_kpool_c8_page_geometry[True-int8]" time="0.002" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_backend_alignment_preserves_kpool_c8_page_geometry[True-fp8]" time="0.002" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_backend_alignment_delegates_regular_cache_geometry[True-auto-True]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_backend_alignment_delegates_regular_cache_geometry[True-int8-False]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_backend_alignment_delegates_regular_cache_geometry[False-int8-True]" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_using_kv_store_recognizes_supported_connectors[connector0]" time="0.000" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_using_kv_store_recognizes_supported_connectors[connector1]" time="0.000" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_using_kv_store_rejects_unrelated_connectors[None]" time="0.000" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_using_kv_store_rejects_unrelated_connectors[connector1]" time="0.000" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_using_kv_store_rejects_unrelated_connectors[connector2]" time="0.000" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kv_store_aligns_mamba_cache_for_prefix_caching" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_disabled_hybrid_manager_does_not_force_align_mode" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_extract_hidden_states_does_not_force_align_mode" time="0.001" /><testcase classname="tests.ut.patch.platform.test_patch_mamba_config" name="test_kv_store_rejects_non_align_explicit_mode" time="0.001" /></testsuite></testsuites>
