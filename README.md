@@ -1,6 +1,6 @@
 # Decode-generated checkpoint reuse: validation evidence
 
-Related RFC: https://github.com/vllm-project/vllm-ascend/issues/20549
+PR: [#20755](https://github.com/vllm-project/vllm-ascend/pull/20755) · RFC: [#20549](https://github.com/vllm-project/vllm-ascend/issues/20549)
 
 ## Implementation
 
@@ -14,7 +14,7 @@ Yes. Joint state reuse is opt-in through `enable_state_store_reuse`. The connect
 
 Four accompanying adjustments also apply when state reuse is disabled: native Mamba split delegation, scheduled-prefix MTP backup indexing, circular slot mapping, and honoring an explicit C8 `block_size`.
 
-Validated configuration: GLM-5.3-Flash W8A8 with INT8 MLA cache, BF16 pooled indexer, the V1 model runner, bulk Mooncake transfer, P TP8 and D TP2 × DP4. A release-note draft is included in this review package.
+Validated configuration: GLM-5.3-Flash W8A8 with INT8 MLA cache, BF16 pooled indexer, the V1 model runner, bulk Mooncake transfer, P TP8 and D TP2 × DP4. Release note: `release_notes/fragments/20755.yaml` in PR #20755.
 
 ## Validation
 
@@ -24,27 +24,96 @@ Validated configuration: GLM-5.3-Flash W8A8 with INT8 MLA cache, BF16 pooled ind
 - GSM8K: all 1,319 questions per arm and workload, 5-shot native lm-eval scoring, temperature 0, seed 1024, output budget 8,192 and concurrency 16.
 - ServeBench/GuideLLM: 20 ordinary pressure points per arm; five continuation points, each using the same frozen 192-input workload in A and B. Native EOS is retained for continuation requests.
 
-| Strict-match quality | A | B |
+**Paired NPU results**
+
+A is the native baseline; B adds the feature patch. Paired cells are **A / B**. Throughput is output tokens/s; latency is seconds unless stated otherwise. These tables reuse the recorded results; no experiments were rerun.
+
+**Answer quality.** All 1,319 questions per arm and workload; 5-shot native lm-eval strict scoring, temperature 0, seed 1024, output cap 8,192 and concurrency 16.
+
+| Workload | A correct | B correct | Accuracy A / B | A-only correct | B-only correct |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Ordinary GSM8K | 1287 / 1319 | 1287 / 1319 | 97.57% / 97.57% | 6 | 6 |
+| GSM8K with frozen history | 1281 / 1319 | 1281 / 1319 | 97.12% / 97.12% | 8 | 8 |
+
+Length-truncated answers remain in the denominator: ordinary A/B = 1/0; frozen-history A/B = 1/1.
+
+**Generated-history continuation: throughput and time to first token.** Each arm completes 192 requests per point, with native EOS and an output cap of 1,024. All ten points have zero request errors and zero boundary cancellations. Source-history generation and transport warmup are outside continuation timing.
+
+| Concurrency | Output tok/s A / B | B change | TTFT P50 A / B | TTFT P90 A / B | TTFT P99 A / B |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 51.74 / 60.16 | +16.3% | 0.991 / 0.650 | 1.140 / 0.692 | 1.213 / 0.722 |
+| 8 | 313.32 / 331.67 | +5.9% | 1.206 / 0.746 | 1.893 / 1.170 | 4.385 / 3.282 |
+| 32 | 657.77 / 831.78 | +26.5% | 2.791 / 1.364 | 7.719 / 1.922 | 16.574 / 3.153 |
+| 64 | 679.02 / 1090.48 | +60.6% | 17.242 / 3.090 | 23.407 / 12.213 | 32.067 / 17.417 |
+| 128 | 682.71 / 1089.10 | +59.5% | 47.646 / 19.765 | 54.351 / 32.023 | 62.905 / 34.596 |
+
+**Continuation: end-to-end latency and time per output token.** TPOT is measured after the first token and shown in milliseconds.
+
+| Concurrency | End-to-end P50 A / B | End-to-end P99 A / B | TPOT P50 A / B (ms) |
+| --- | ---: | ---: | ---: |
+| 1 | 7.164 / 6.250 | 8.223 / 7.026 | 16.58 / 14.95 |
+| 8 | 9.342 / 8.861 | 12.606 / 11.519 | 21.58 / 21.65 |
+| 32 | 16.588 / 14.038 | 30.761 / 17.684 | 36.92 / 33.99 |
+| 64 | 30.963 / 18.340 | 46.626 / 34.549 | 38.14 / 40.21 |
+| 128 | 58.379 / 34.899 | 77.107 / 51.422 | 37.66 / 40.45 |
+
+At concurrency 64/128, B improves throughput and end-to-end latency while median TPOT rises by 5.4%/7.4%. The observed benefit is primarily earlier first-token delivery and higher aggregate throughput, not a 60% acceleration of per-token decode computation.
+
+**External reuse evidence, per 192-request point.**
+
+| Metric | A | B |
 | --- | ---: | ---: |
-| Ordinary GSM8K | 1,287 / 1,319 | 1,287 / 1,319 |
-| GSM8K with frozen history | 1,281 / 1,319 | 1,281 / 1,319 |
+| P recomputed tokens | 879,255 | 43,671 |
+| P external-hit tokens | 0 | 835,584 |
+| P local prefix-hit tokens | 0 | 0 |
+| Store GET calls, summed across ranks | 0 | 1,536 |
 
-The history workload has eight A-only correct answers and eight B-only correct answers. All history performance points completed 192 requests with zero request errors or cancellations.
+| Mean composition of a 4,352-token hit | Tokens |
+| --- | ---: |
+| Generated text | 3,387.88 |
+| Initial prompt | 512.00 |
+| Follow-up user input | 444.16 |
+| Generated control tokens | 7.96 |
 
-| Continuation concurrency | A output tokens/s | B output tokens/s | B / A change |
-| ---: | ---: | ---: | ---: |
-| 1 | 51.74 | 60.16 | +16.3% |
-| 8 | 313.32 | 331.67 | +5.9% |
-| 32 | 657.77 | 831.78 | +26.5% |
-| 64 | 679.02 | 1090.48 | +60.6% |
-| 128 | 682.71 | 1089.10 | +59.5% |
+180 histories cross the saved boundary during decode; 12 cross it during follow-up prefill. One initial warmup miss (`c1-007`) was subsequently seeded by P. Local-only cache resets retain Store connections between warmup and measurement.
 
-Per continuation point, P-side recomputation decreased from 879,255 to 43,671 tokens; B recorded 835,584 external-hit tokens, 1,536 rank-level GET calls and zero local hits. The run uses separate transport warmup and local-only prefix-cache resets. Of the 192 source histories, 180 cross a checkpoint during decode and 12 during follow-up prefill. One initial warmup miss was later seeded by P. The mean hit contains 3,387.88 generated tokens out of 4,352 total tokens.
+**Ordinary requests: 1,024 input / 256 output tokens.**
 
-A's effective P/D block sizes are 1,152/4,352; B's are 4,352/4,352. Both arms include the same INT8 registry compatibility change. The measured speedups cover the full patch, including this effective block-size change.
+| Concurrency | Output tok/s A / B | B change | TTFT P50 A / B | TTFT P90 A / B | TTFT P99 A / B | Boundary cancellations A / B |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 62.99 / 62.67 | -0.5% | 0.644 / 0.655 | 0.686 / 0.672 | 0.768 / 0.723 | 0 / 0 |
+| 4 | 220.12 / 221.11 | +0.4% | 0.715 / 0.854 | 1.048 / 1.032 | 1.164 / 1.159 | 0 / 0 |
+| 8 | 357.45 / 359.51 | +0.6% | 0.821 / 0.809 | 1.097 / 1.039 | 1.237 / 1.148 | 0 / 0 |
+| 16 | 534.50 / 554.29 | +3.7% | 1.002 / 1.047 | 1.210 / 1.242 | 1.382 / 1.523 | 0 / 0 |
+| 32 | 841.72 / 835.24 | -0.8% | 1.245 / 1.161 | 1.504 / 1.373 | 1.708 / 1.621 | 0 / 0 |
+| 64 | 1155.92 / 1111.94 | -3.8% | 2.239 / 2.435 | 5.234 / 4.634 | 7.705 / 6.998 | 0 / 0 |
+| 128 | 1113.17 / 1128.19 | +1.3% | 17.029 / 16.984 | 20.466 / 20.377 | 22.762 / 22.126 | 4 / 2 |
+| 256 | 1119.00 / 1131.74 | +1.1% | 46.709 / 46.408 | 49.234 / 49.040 | 50.708 / 51.242 | 133 / 121 |
+| 512 | 1156.70 / 1106.60 | -4.3% | 100.964 / 103.959 | 104.671 / 107.949 | 107.326 / 110.367 | 375 / 382 |
+| 1024 | 1111.63 / 1130.38 | +1.7% | 127.366 / 126.212 | 203.968 / 204.065 | 221.212 / 222.084 | 901 / 895 |
 
-Ordinary throughput at 8,192 input / 256 output tokens is 1.9–2.2% lower in B from concurrency 16 upward. The attached report preserves all 20 ordinary points per arm, including cancellations and tail percentiles. Runtime observations include three expiry-cleanup errors in A, dispatch-delay warnings in both arms at continuation concurrency 64/128, and a resource-sampling gap in B's first ordinary point. Cold HCCS connection setup is measured separately from the warmed continuation results.
+**Ordinary requests: 8,192 input / 256 output tokens.**
 
+| Concurrency | Output tok/s A / B | B change | TTFT P50 A / B | TTFT P90 A / B | TTFT P99 A / B | Boundary cancellations A / B |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 50.23 / 52.51 | +4.5% | 1.551 / 1.393 | 1.592 / 1.402 | 1.641 / 1.431 | 0 / 0 |
+| 4 | 166.54 / 178.49 | +7.2% | 2.091 / 1.660 | 2.679 / 2.265 | 2.921 / 2.714 | 0 / 0 |
+| 8 | 271.40 / 274.62 | +1.2% | 2.747 / 2.720 | 3.304 / 3.239 | 3.624 / 3.648 | 0 / 0 |
+| 16 | 285.66 / 279.34 | -2.2% | 9.528 / 9.898 | 9.887 / 10.364 | 10.187 / 10.508 | 0 / 0 |
+| 32 | 285.30 / 279.41 | -2.1% | 23.933 / 24.572 | 24.352 / 25.028 | 24.760 / 25.278 | 0 / 0 |
+| 64 | 285.03 / 279.53 | -1.9% | 52.597 / 53.869 | 53.171 / 54.403 | 56.854 / 57.309 | 31 / 31 |
+| 128 | 285.50 / 279.35 | -2.2% | 109.981 / 112.393 | 110.556 / 113.054 | 114.014 / 115.810 | 94 / 95 |
+| 256 | 285.11 / 279.31 | -2.0% | 132.041 / 133.211 | 214.334 / 214.308 | 228.766 / 232.560 | 222 / 223 |
+| 512 | 285.64 / 279.46 | -2.2% | 132.040 / 132.314 | 214.314 / 213.357 | 232.248 / 231.475 | 478 / 480 |
+| 1024 | 285.37 / 279.31 | -2.1% | 131.961 / 132.083 | 214.254 / 213.141 | 232.304 / 231.459 | 990 / 992 |
+
+Each ordinary point uses 30 seconds of warmup, 180 seconds of measurement and 30 seconds of cooldown. All 40 points record zero request errors; measurement-boundary cancellations are listed separately. High client concurrency includes queued requests. B's throughput is 1.9–2.2% lower for 8,192-token inputs from concurrency 16 upward; the 1,024-token workload ranges from −4.3% to +3.7%.
+
+**Measurement conditions.** A's effective P/D block sizes are 1,152/4,352; B's are 4,352/4,352. Both arms share the INT8 registration fix. Results measure the complete feature patch, including explicit C8 block-size handling. Each configuration has one measured run; run-to-run variability was not measured.
+
+Both arms record client dispatch-delay warnings at continuation concurrency 64/128. A records three 480-second expiry-cleanup errors. B's first ordinary point has a continuous resource-sampling gap. Cold HCCS connection setup is separate: in the recorded same-request cold/warm comparison, mean per-rank GET latency changed from 692.45 ms to 6.40 ms and TTFT from 1.420 s to 0.573 s.
+
+The performance CSV retains completed-request counts, errors, cancellations, request/output throughput and TTFT/ITL/TPOT/end-to-end P50/P90/P95/P99. Resource-usage summaries and per-request checkpoint provenance are not included in these tables.
 
 ## Revisions and artifacts
 
