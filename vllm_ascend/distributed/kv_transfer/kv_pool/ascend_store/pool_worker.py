@@ -4,8 +4,8 @@ import importlib
 import math
 import threading
 import time
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, cast
 
 import torch
 import vllm.envs as envs
@@ -31,10 +31,6 @@ from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.backend import (
     backend_map,
 )
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.coordinator import AscendStoreCoordinator
-from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.dspark_prefix_cache import (
-    DSparkPrefixCache,
-    DSparkPrefixKeys,
-)
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.kv_transfer import (
     KVCacheStoreBatch,
     KVCacheStoreRecvingThread,
@@ -67,17 +63,17 @@ from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.metadata import (
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.metrics import (
     AscendStoreKVConnectorStats,
 )
+from vllm_ascend.distributed.kv_transfer.utils.utils import align_register_start
 from vllm_ascend.distributed.utils import (
     get_decode_context_model_parallel_rank,
     get_decode_context_model_parallel_world_size,
 )
 
-if TYPE_CHECKING:
-    from .state_store.state_store_layout import AcceptedStateStoreLayout
+SAVE_BATCH_FAILURE_POLL_INTERVAL_S = 1.0
 
 
-class KVPoolWorker:
-    # The main class for the cache engine.
+class BaseKVPoolWorker(ABC):
+    """Common cache registration, metadata, lookup, and lifecycle for pool workers."""
 
     def __init__(
         self,
@@ -107,13 +103,34 @@ class KVPoolWorker:
         self._init_metadata(model_config, vllm_config, extra_config)
         self._init_backend(parallel_config, extra_config)
         self._init_kv_events(vllm_config)
-        self._init_state_vars()
-        self._dspark_prefix_keys: DSparkPrefixKeys | None = None
-        self.dspark_prefix_cache: DSparkPrefixCache | None = None
-        if not use_layerwise:
-            self._init_cache_layout()
+        self._previous_save_batch: KVCacheStoreBatch | None = None
+        self.physical_layer_to_group_layers: dict[int, list[tuple[int, int]]] = {}
+        self._global_to_local_layer: dict[int, int] = {}
+        self.kv_send_thread: KVTransferThread | None = None
+        self.kv_recv_thread: KVTransferThread | None = None
+        self._transfer_threads_started = False
         self._kv_stats = AscendStoreKVConnectorStats()
         self._kv_stats_lock = threading.Lock()
+
+    @abstractmethod
+    def _start_kv_transfer_threads(self) -> None:
+        """Start the transfer threads required by this worker mode."""
+
+    @abstractmethod
+    def set_external_slot_release_waiter(self, waiter: Callable[[int], None]) -> bool:
+        """Register a callback when the transfer mode supports it."""
+        return False
+
+    @abstractmethod
+    def start_load_kv(self, metadata: AscendConnectorMetadata) -> None:
+        """Start loads for the current connector step."""
+        return
+
+    @abstractmethod
+    def _build_lookup_keys(
+        self, token_len: int, block_hashes: list[BlockHash], group_id: int
+    ) -> tuple[list[str], list[int], list[int]]:
+        """Build the storage keys for a group lookup."""
 
     def _init_parallelism_info(self, model_config, parallel_config) -> None:
         self.local_rank = envs.LOCAL_RANK
@@ -161,20 +178,9 @@ class KVPoolWorker:
 
     def _init_kv_transfer_config(self, vllm_config, extra_config, use_layerwise, kv_cache_config) -> None:
         self._extra_config = extra_config
-        self.enable_state_store_reuse = extra_config.get("enable_state_store_reuse", False)
-        if type(self.enable_state_store_reuse) is not bool:
-            raise ValueError("enable_state_store_reuse must be a boolean")
-        if self.enable_state_store_reuse and vllm_config.kv_transfer_config.kv_load_failure_policy != "fail":
-            raise ValueError("accepted-state reuse requires kv_load_failure_policy=fail")
-        if self.enable_state_store_reuse and use_layerwise:
-            raise ValueError("accepted-state Store layout currently requires bulk transfer")
         self.use_layerwise = use_layerwise
         self.kv_role = vllm_config.kv_transfer_config.kv_role
         self.load_async = extra_config.get("load_async", False)
-        if self.enable_state_store_reuse and (
-            self.kv_role != "kv_consumer" or extra_config.get("consumer_is_to_load", False)
-        ):
-            self.load_async = True
         self._save_disabled = threading.Event()
         self._closed = False
         self._invalid_block_ids: set[int] = set()
@@ -261,7 +267,6 @@ class KVPoolWorker:
             self.tp_size,
             self.num_kv_head,
             self.use_mla,
-            use_hybrid=self.use_hybrid and self.enable_state_store_reuse,
         )
         self.peer_tp_size = tp_mismatch_info.peer_tp_size
         self.effective_tp_size = tp_mismatch_info.effective_tp_size
@@ -368,41 +373,6 @@ class KVPoolWorker:
         if kv_event_config and kv_event_config.enable_kv_cache_events:
             self.enable_kv_events = True
 
-    def _init_state_vars(self) -> None:
-        self.kv_send_thread: KVTransferThread | None = None
-        self.kv_recv_thread: KVTransferThread | None = None
-        self._previous_save_batch: KVCacheStoreBatch | None = None
-        self._transfer_threads_started = False
-        self.state_store_layouts: dict[int, AcceptedStateStoreLayout] = {}
-        self.external_slot_release_waiter: Callable[[int], None] | None = None
-
-    def _init_cache_layout(self) -> None:
-        self.physical_layer_to_group_layers: dict[int, list[tuple[int, int]]] = {}
-        self._global_to_local_layer: dict[int, int] = {}
-        if self.kv_cache_config is None:
-            return
-        physical_layers = {
-            self._extract_physical_layer_index(layer_name)
-            for group in self.kv_cache_config.kv_cache_groups
-            for layer_name in group.layer_names
-        }
-        self._global_to_local_layer = {
-            global_layer: local_layer for local_layer, global_layer in enumerate(sorted(physical_layers))
-        }
-        self.num_layers = max(self.num_layers, len(physical_layers))
-        if self.num_kv_cache_groups > 1:
-            for group_id, group in enumerate(self.kv_cache_config.kv_cache_groups):
-                if group_id not in self.cacheable_group_ids:
-                    continue
-                local_layers = sorted(
-                    {
-                        self._global_to_local_layer[self._extract_physical_layer_index(name)]
-                        for name in group.layer_names
-                    }
-                )
-                for layer_index, local_layer in enumerate(local_layers):
-                    self.physical_layer_to_group_layers.setdefault(local_layer, []).append((group_id, layer_index))
-
     def _group_pp_byte_offset(self, group_id: int) -> int:
         """Keep GVA allocation and transfer origins on the same PP layout."""
         if getattr(self, "pp_size", 1) == 1 or getattr(self, "use_block_key_layerwise", False):
@@ -426,57 +396,6 @@ class KVPoolWorker:
         self.m_store.close()
         self._closed = True
 
-    def set_external_slot_release_waiter(self, waiter: Callable[[int], None]) -> bool:
-        return False
-
-    def _start_kv_transfer_threads(self) -> None:
-        if self._transfer_threads_started:
-            return
-
-        if self.can_put:
-            ready_event_sending = threading.Event()
-            self.kv_send_thread = KVCacheStoreSendingThread(
-                self.m_store,
-                self.token_database,
-                self.grouped_block_size,
-                self.tp_rank,
-                self.tp_size,
-                # KVPP owners hold different layers, not PCP replicas.
-                0 if self.use_kvpp else self.pcp_rank,
-                1 if self.use_kvpp else self.pcp_size,
-                self.dcp_size,
-                self.put_step,
-                self.kv_role,
-                ready_event_sending,
-                self.group_uses_align_state,
-                self.enable_kv_events,
-                worker=self if self.tp_mismatch else None,
-                state_store_layouts=self.state_store_layouts if self.enable_state_store_reuse else None,
-            )
-            self.kv_send_thread.start()
-            ready_event_sending.wait()
-            self.kv_send_thread.raise_if_failed()
-        if self.load_async:
-            ready_event = threading.Event()
-            self.kv_recv_thread = KVCacheStoreRecvingThread(
-                self.m_store,
-                self.token_database,
-                self.grouped_block_size,
-                self.tp_rank,
-                self.tp_size,
-                self.dcp_size,
-                ready_event,
-                invalid_block_ids=self._invalid_block_ids,
-                invalid_block_ids_lock=self._invalid_block_ids_lock,
-                worker=self if self.tp_mismatch else None,
-                state_store_layouts=self.state_store_layouts if self.enable_state_store_reuse else None,
-                record_operation=self._record_kv_connector_operation,
-            )
-            self.kv_recv_thread.start()
-            ready_event.wait()
-            self.kv_recv_thread.raise_if_failed()
-        self._transfer_threads_started = True
-
     def _build_cache_coordinator(self, vllm_config: VllmConfig) -> AscendStoreCoordinator | None:
         if self.kv_cache_config is None or not self.use_hybrid:
             return None
@@ -494,7 +413,6 @@ class KVPoolWorker:
             group_cache_families=self.kv_cache_group_families,
             use_eagle=use_eagle,
             retention_interval=retention_interval,
-            boundary_state_offloads=self.enable_state_store_reuse,
         )
 
     def _infer_group_uses_align_state(self) -> list[bool]:
@@ -731,81 +649,30 @@ class KVPoolWorker:
         alignment = 2 * 1024 * 1024
         for storage_key in registered_regions:
             start, end = registered_regions[storage_key]
-            new_start = start // alignment * alignment
-            # Because the addresses of raw tensors are aligned to 2MB,
-            # all shared sub-tensors, when aligned downwards, should theoretically not exceed the address bounds.
-            assert new_start >= storage_key, "invalid kv cache tensor, raw tensor ptr must be align to 2MB"
+            new_start = align_register_start(start, storage_key, alignment)
             registered_regions[storage_key] = (new_start, end)
 
-    def _register_dspark_prefix_cache(self, draft_caches: dict[str, torch.Tensor]) -> None:
-        """Register draft caches when the layerwise worker enables prefix reuse."""
-
-    def _compile_state_store_layouts(self, kv_caches):
-        """Bind model-described state layouts to this worker's real caches."""
-        from vllm.distributed.kv_transfer.kv_connector.v1.mooncake.store.data import KeyMetadata as StoreKeyMetadata
-
-        from .model_adapters import describe_model_registration
-        from .state_store.state_registration import compile_state_store_layouts, qualify_page_metadata
-
-        if self.kv_cache_config is None:
-            raise ValueError("state registration requires the native cache configuration")
-        if self.use_layerwise or self.use_kvpp or self.pp_size != 1 or self.pcp_size != 1 or self.dcp_size != 1:
-            raise NotImplementedError(
-                "state registration requires bulk transfer with PP=PCP=DCP=1 and TP-only cache ownership"
-            )
-        extra = self.vllm_config.kv_transfer_config.kv_connector_extra_config
-        store_tp_size = extra.get("state_store_tp_size")
-        if type(store_tp_size) is not int or store_tp_size <= 0:
-            raise ValueError("state_store_tp_size must specify the peers' shared logical Store partition")
-        # Match native registration, including NoPE's empty RoPE placeholder.
-        native_caches = {name: self._as_cache_tuple(caches) for name, caches in kv_caches.items()}
-        registered, policy = describe_model_registration(
-            self.vllm_config, self.kv_cache_config, native_caches, self.tp_size, self.tp_rank
-        )
-        for private in registered.private:
-            if (
-                not private.spec.resume_without_history
-                or self.cache_transfer_granularity % private.spec.boundary_multiple
-            ):
-                raise NotImplementedError("private cache lacks an aligned no-history resume contract")
-        layouts = compile_state_store_layouts(
-            registered,
-            metadata=StoreKeyMetadata(
-                self.model_name,
-                self.tp_rank,
-                self.pcp_rank,
-                self.dcp_rank,
-                self.pp_rank,
-                cache_prefix=extra.get("cache_prefix", ""),
-            ),
-            local_tp_size=self.tp_size,
-            store_tp_size=store_tp_size,
-            pp_size=self.pp_size,
-            num_blocks=self.kv_cache_config.num_blocks,
-            hash_block_size=self.hash_block_size,
-            key_policy=policy,
-        )
-        page_metadata = (
-            qualify_page_metadata(self.token_database.metadata, registered, layouts) if registered.pages else None
-        )
-        return layouts, page_metadata
-
     def register_kv_caches(self, kv_caches: dict[str, torch.Tensor]):
-        state_layouts, page_metadata = (
-            self._compile_state_store_layouts(kv_caches) if self.enable_state_store_reuse else (None, None)
-        )
-        draft_names = getattr(self, "_dspark_draft_layer_names", ())
-        draft_caches = {name: cache for name, cache in kv_caches.items() if name in draft_names}
-        if draft_names:
-            kv_caches = {name: cache for name, cache in kv_caches.items() if name not in draft_names}
+        self._set_num_blocks(kv_caches)
+        self._register_kv_caches(kv_caches)
+
+    def _set_num_blocks(self, kv_caches: dict[str, torch.Tensor]) -> None:
         _, first_kv_cache_tuple = next(iter(kv_caches.items()))
         first_kv_cache_tuple = self._as_cache_tuple(first_kv_cache_tuple)
         first_kv_cache = first_kv_cache_tuple[0]
-
         self.num_blocks = (
             self.kv_cache_config.num_blocks if self.kv_cache_config is not None else first_kv_cache.shape[0]
         )
-        self._register_dspark_prefix_cache(draft_caches)
+
+    def _register_kv_caches(
+        self,
+        kv_caches: dict[str, torch.Tensor],
+        auxiliary_caches: dict[str, torch.Tensor] | None = None,
+        excluded_layer_names: set[str] | None = None,
+    ) -> None:
+        _, first_kv_cache_tuple = next(iter(kv_caches.items()))
+        first_kv_cache_tuple = self._as_cache_tuple(first_kv_cache_tuple)
+        first_kv_cache = first_kv_cache_tuple[0]
         logger.info("num_blocks: %s", self.num_blocks)
         self.block_len = []
         self.block_stride = []
@@ -844,9 +711,7 @@ class KVPoolWorker:
         self.kv_caches_base_addr = []
 
         registered_regions: dict[int, tuple[int, int]] = {}
-        registration_caches = (
-            {**kv_caches, **draft_caches} if getattr(self, "dspark_prefix_cache", None) is not None else kv_caches
-        )
+        registration_caches = {**kv_caches, **auxiliary_caches} if auxiliary_caches else kv_caches
         for cache_or_caches in registration_caches.values():
             for cache in self._as_cache_tuple(cache_or_caches):
                 base_addr = cache.data_ptr()
@@ -857,23 +722,19 @@ class KVPoolWorker:
                 storage_key = self._get_storage_key(cache)
                 start = base_addr
                 end = base_addr + region_len
-                if self.enable_state_store_reuse:
-                    span = 1 + sum((size - 1) * stride for size, stride in zip(cache.shape, cache.stride()))
-                    end = base_addr + span * cache.element_size()
                 if storage_key in registered_regions:
                     old_start, old_end = registered_regions[storage_key]
                     registered_regions[storage_key] = (min(old_start, start), max(old_end, end))
                 else:
                     registered_regions[storage_key] = (start, end)
 
-        if not first_kv_cache.is_cpu:
-            self._align_kv_ptrs(registered_regions)
+        self._align_kv_ptrs(registered_regions)
         ptrs = [start for start, _ in registered_regions.values()]
         lengths = [end - start for start, end in registered_regions.values()]
 
         if self.kv_cache_config is not None and self.use_hybrid:
             for group_id, group_spec in enumerate(self.kv_cache_config.kv_cache_groups):
-                layer_names = [name for name in group_spec.layer_names if name not in draft_names]
+                layer_names = [name for name in group_spec.layer_names if name not in (excluded_layer_names or ())]
                 if self.use_kvpp:
                     layer_names = [name for name in layer_names if name in kv_caches]
                 self._infer_cache_group_metadata(group_id, layer_names)
@@ -922,16 +783,562 @@ class KVPoolWorker:
             )
 
         # Register buffers before starting the transfer threads.
-        if self.enable_state_store_reuse:
-            self.m_store.register_buffer_checked(ptrs, lengths)
-            if page_metadata is not None:
-                self.metadata = page_metadata
-                self.token_database.metadata = page_metadata
-                self.token_database._key_prefix_cache.clear()
-            self.state_store_layouts = state_layouts
-        else:
-            self.m_store.register_buffer(ptrs, lengths)
+        self.m_store.register_buffer(ptrs, lengths)
         self._start_kv_transfer_threads()
+
+    def _record_kv_connector_operation(self, operation: str, duration_seconds: float, num_keys: int) -> None:
+        with self._kv_stats_lock:
+            self._kv_stats.record_operation(operation, duration_seconds, num_keys)
+
+    def get_stats(self) -> AscendStoreKVConnectorStats | None:
+        with self._kv_stats_lock:
+            if self._kv_stats.is_empty():
+                return None
+            stats = self._kv_stats
+            self._kv_stats = AscendStoreKVConnectorStats()
+            return stats
+
+    def _record_invalid_blocks_ids(self, block_ids: list[int]) -> None:
+        if not block_ids:
+            return
+        with self._invalid_block_ids_lock:
+            self._invalid_block_ids.update(block_ids)
+
+    def _record_failed_request(self, request: ReqMeta) -> None:
+        request.can_save = False
+        if self.num_kv_cache_groups > 1:
+            with self._invalid_block_ids_lock:
+                self._failed_requests.add(request.req_id)
+        else:
+            self._record_invalid_blocks_ids([block_id for block_id in request.block_ids if block_id > 0])
+        self._save_disabled.set()
+
+    def get_failed_requests(self) -> set[str]:
+        with self._invalid_block_ids_lock:
+            failed = self._failed_requests.copy()
+            self._failed_requests.clear()
+        for thread in (self.kv_send_thread, self.kv_recv_thread):
+            if thread is not None:
+                failed.update(thread.get_and_clear_failed_requests())
+        return failed
+
+    def get_block_ids_with_load_errors(self) -> set[int]:
+        with self._invalid_block_ids_lock:
+            invalid_blocks = self._invalid_block_ids.copy()
+            self._invalid_block_ids.clear()
+        return invalid_blocks
+
+    def wait_for_previous_save(self) -> None:
+        save_batch = self._previous_save_batch
+        if save_batch is None:
+            return
+
+        assert self.kv_send_thread is not None
+        send_thread = self.kv_send_thread
+        wait_start = time.perf_counter()
+        while True:
+            send_thread.raise_if_failed()
+            if save_batch.done.wait(timeout=SAVE_BATCH_FAILURE_POLL_INTERVAL_S):
+                break
+        elapsed = time.perf_counter() - wait_start
+        logger.debug(
+            "Previous KV save batch completed after waiting %.3f ms tp_rank=%d",
+            elapsed * 1000,
+            self.tp_rank,
+        )
+        self._previous_save_batch = None
+
+    def get_finished(self, finished_req_ids: set[str], meta: AscendConnectorMetadata) -> tuple[set[str], set[str]]:
+        if self.kv_send_thread is not None:
+            send_thread = self.kv_send_thread
+            for req_id in meta.preempted_req_ids:
+                if isinstance(send_thread, (KVCacheStoreSendingThread, KVCacheStoreLayerSendingThread)):
+                    send_thread.delete_finished_stored_request(req_id)
+                if isinstance(send_thread, KVCacheStoreSendingThread):
+                    send_thread.reset_saved_request(req_id)
+                    self._retired_store_req_ids.discard(req_id)
+            if isinstance(send_thread, KVCacheStoreSendingThread):
+                for req_id in finished_req_ids:
+                    if send_thread.is_stored_request(req_id):
+                        self._retired_store_req_ids.add(req_id)
+                    else:
+                        send_thread.reset_saved_request(req_id)
+                        self._retired_store_req_ids.discard(req_id)
+                for req_id in self._retired_store_req_ids.copy():
+                    if not send_thread.is_stored_request(req_id):
+                        send_thread.reset_saved_request(req_id)
+                        self._retired_store_req_ids.discard(req_id)
+            self.kv_send_thread.discard_finished_requests(meta.preempted_req_ids)
+            # Saves complete synchronously in wait_for_save(), so the scheduler
+            # never waits for a request-level finished_sending notification.
+            self.kv_send_thread.get_and_clear_finished_requests()
+            done_sending: set[str] = set()
+        else:
+            done_sending = set()
+
+        done_recving = set()
+        if self.kv_recv_thread is not None:
+            self.kv_recv_thread.discard_finished_requests(meta.preempted_req_ids)
+            if self.load_async and not self.use_layerwise:
+                done_recving = self.kv_recv_thread.get_and_clear_finished_requests(meta.loading_req_ids)
+
+        logger.debug(
+            "Number of completed KV cache send requests: %d, receive requests: %d, tp_rank:%d",
+            len(done_sending),
+            len(done_recving),
+            self.tp_rank,
+        )
+        return done_sending, done_recving
+
+    def ensure_store_initialized(self) -> None:
+        ensure_initialized = getattr(self.m_store, "ensure_initialized", None)
+        if ensure_initialized is not None:
+            ensure_initialized()
+
+    def reset_store(self) -> None:
+        """Drain queued puts, then wipe the backend.
+
+        Join first so a put already on the send thread cannot land after
+        ``remove_all`` and repopulate the pool with the previous weights.
+        """
+        if self.kv_send_thread is not None:
+            self.kv_send_thread.request_queue.join()
+        self.m_store.remove_all()
+
+    def lookup(
+        self,
+        token_len: int,
+        block_hashes: list[BlockHash],
+        kv_cache_group_ids: list[int] | None = None,
+        use_layerwise: bool = False,
+    ) -> int:
+        """
+        Checks the existence of KV cache of the tokens from the cache engine.
+        :param tokens: the input tokens, with shape [seq_len]
+        :return: An int indicating how many prefix tokens are cached.
+        """
+        try:
+            hits = []
+            kv_cache_group_ids = kv_cache_group_ids or [0]
+            coordinator_hit = (
+                None
+                if use_layerwise
+                else self._lookup_with_coordinator(
+                    token_len,
+                    block_hashes,
+                    kv_cache_group_ids,
+                    include_all_ranks=False,
+                )
+            )
+            if coordinator_hit is not None:
+                return coordinator_hit
+            for group_id in kv_cache_group_ids:
+                keys, starts, ends = self._build_lookup_keys(token_len, block_hashes, group_id)
+
+                if not keys:
+                    hits.append(0)
+                    continue
+
+                res = self.m_store.exists(keys)  # type: ignore[assignment]
+
+                if use_layerwise:
+                    res = self.check_all_layers_exists(
+                        res,
+                        getattr(self, "layerwise_key_layers", 0) or self.num_layers,
+                    )
+                if group_id < len(self.group_uses_align_state) and self.group_uses_align_state[group_id]:
+                    hit_end = 0
+                    for index in range(len(ends) - 1, -1, -1):
+                        if (
+                            res[index] == 1  # type: ignore[index]
+                            and ends[index] % self.cache_transfer_granularity == 0
+                        ):
+                            hit_end = ends[index]
+                            break
+                else:
+                    hit_end = ends[-1]
+                    for index, value in enumerate(res):  # type: ignore[arg-type]
+                        if value != 1:
+                            hit_end = 0
+                            for hit_index in range(index, 0, -1):
+                                if starts[hit_index] % self.cache_transfer_granularity == 0:
+                                    hit_end = starts[hit_index]
+                                    break
+                            break
+                hits.append(hit_end)
+        except Exception as e:
+            logger.error(
+                "Remote connection failed in get_common_prefix_length. type=%s, error=%s. "
+                "Check network and remote store.",
+                type(e).__name__,
+                e,
+            )
+            return 0
+        return min(hits) if hits else 0
+
+    def _get_group_num_kv_heads(self, group_id: int) -> int:
+        if self.use_mla or self.use_sparse:
+            return 1
+        if group_id < len(self.group_uses_align_state) and self.group_uses_align_state[group_id]:
+            return 1
+        return self.num_kv_head
+
+    def get_group_tp_size(self, kv_cache_group_id: int):
+        if self.use_kvpp:
+            return self.tp_size * self.pcp_size
+        if self.tp_mismatch:
+            return self.effective_tp_size
+        if self.group_uses_align_state[kv_cache_group_id]:
+            return self.tp_size
+        return min(self.tp_size, self._get_group_num_kv_heads(kv_cache_group_id))
+
+    @staticmethod
+    def _replace_key_field(key: str, field: str, value: int) -> str:
+        marker = f"@{field}:"
+        start = key.find(marker)
+        if start < 0:
+            return key
+        value_start = start + len(marker)
+        value_end = key.find("@", value_start)
+        if value_end < 0:
+            value_end = len(key)
+        return f"{key[:value_start]}{value}{key[value_end:]}"
+
+    def _expand_lookup_keys_by_rank(self, keys: list[str], group_id: int) -> list[str]:
+        # PCP replicas share keys; expand only the physical KV partitions.
+        expanded: list[str] = []
+        num_head_or_tp_ranks = self.get_group_tp_size(group_id)
+        # Keep each rank shard's block/layer keys contiguous to match
+        # lookup_scheduler()'s [rank_shard][block] result slicing.
+        for pp_rank in range(self.pp_size):
+            for dcp_rank in range(self.dcp_size):
+                for head_or_tp_rank in range(num_head_or_tp_ranks):
+                    for key in keys:
+                        rank_key = self._replace_key_field(key, "dcp", dcp_rank)
+                        rank_key = self._replace_key_field(rank_key, "head_or_tp_rank", head_or_tp_rank)
+                        expanded.append(self._replace_key_field(rank_key, "pp_rank", pp_rank))
+        return expanded
+
+    def _expand_lookup_key_variants(self, key: str, group_id: int, include_all_ranks: bool) -> list[str]:
+        if not include_all_ranks:
+            return [key]
+        return self._expand_lookup_keys_by_rank([key], group_id)
+
+    def _lookup_with_coordinator(
+        self,
+        token_len: int,
+        block_hashes: list[BlockHash],
+        kv_cache_group_ids: list[int],
+        include_all_ranks: bool,
+        hbm_hit_tokens: int = 0,
+    ) -> int | None:
+        if self.cache_coordinator is None:
+            return None
+        if sorted(kv_cache_group_ids) != list(range(self.num_kv_cache_groups)):
+            return None
+        coordinator = self.cache_coordinator
+
+        def query_group_hits(
+            group_id: int,
+            group_block_hashes: Sequence[BlockHash | str],
+            lookup_mask: Sequence[bool] | None,
+        ) -> list[BlockHash | str]:
+            group_block_size = coordinator.group_effective_block_sizes[group_id]
+            present: list[BlockHash | str] = []
+            lookup_start = hbm_hit_tokens // group_block_size * group_block_size
+
+            keys: list[str] = []
+            chunk_hashes: list[BlockHash | str] = []
+            variant_counts: list[int] = []
+            for _, _, key_string, chunk_hash in self.token_database.process_token_key_strings(
+                token_len,
+                block_hashes,
+                mask_num=lookup_start,
+                kv_cache_group_id=group_id,
+                chunk_mask=lookup_mask,
+            ):
+                variants = self._expand_lookup_key_variants(key_string, group_id, include_all_ranks)
+                keys.extend(variants)
+                chunk_hashes.append(chunk_hash)
+                variant_counts.append(len(variants))
+
+            if keys:
+                res = self.m_store.exists(keys)  # type: ignore[assignment]
+                offset = 0
+                for chunk_hash, count in zip(chunk_hashes, variant_counts, strict=True):
+                    values = res[offset : offset + count]  # type: ignore[index]
+                    if values and all(value == 1 for value in values):
+                        present.append(chunk_hash)
+                    offset += count
+
+            logger.debug(
+                "KV pool coordinator lookup group=%d token_len=%d keys=%d exists_chunks=%d sample_keys=%s",
+                group_id,
+                token_len,
+                len(keys),
+                len(present),
+                keys[:3],
+            )
+            return present
+
+        return coordinator.find_reachable_hit_tokens(
+            block_hashes,
+            token_len,
+            query_group_hits,
+            log_context="KV pool coordinator lookup",
+            hbm_hit_tokens=hbm_hit_tokens,
+        )
+
+    def lookup_scheduler(
+        self,
+        token_len: int,
+        block_hashes: list[BlockHash],
+        kv_cache_group_ids: list[int] | None = None,
+        use_layerwise: bool = False,
+        hbm_hit_tokens: int = 0,
+    ) -> int:
+        """
+        Checks the existence of KV cache of the tokens from the cache engine.
+        :param tokens: the input tokens, with shape [seq_len]
+        :return: An int indicating how many prefix tokens are cached.
+        """
+        try:
+            hits: list[list[int]] = []
+            max_hit_position = self.max_model_len
+            kv_cache_group_ids = kv_cache_group_ids or [0]
+            coordinator_hit = (
+                None
+                if use_layerwise
+                else self._lookup_with_coordinator(
+                    token_len,
+                    block_hashes,
+                    kv_cache_group_ids,
+                    include_all_ranks=True,
+                    hbm_hit_tokens=hbm_hit_tokens,
+                )
+            )
+            if coordinator_hit is not None:
+                return coordinator_hit
+            for group_id in kv_cache_group_ids:
+                keys, starts, ends = self._build_lookup_keys(token_len, block_hashes, group_id)
+
+                if not keys:
+                    return 0
+
+                multi_tp_keys = self._expand_lookup_keys_by_rank(keys, group_id)
+                num_ranks = len(multi_tp_keys) // len(keys)
+                res = self.m_store.exists(multi_tp_keys)  # type: ignore[assignment]
+                num_block = len(keys)
+                if use_layerwise:
+                    res = self.check_all_layers_exists(
+                        res,
+                        getattr(self, "layerwise_key_layers", 0) or self.num_layers,
+                    )
+                    num_block = len(keys) // (getattr(self, "layerwise_key_layers", 0) or self.num_layers)
+                multi_tp_values = [
+                    res[i * num_block : (i + 1) * num_block]  # type: ignore[index]
+                    for i in range(num_ranks)
+                ]
+                logger.debug(
+                    "KV pool lookup request token_len=%d group=%d keys=%d multi_tp_keys=%d "
+                    "exists_count=%d/%d exists_sample=%s sample_keys=%s",
+                    token_len,
+                    group_id,
+                    len(keys),
+                    len(multi_tp_keys),
+                    sum(1 for value in res if value == 1),  # type: ignore[union-attr]
+                    len(res),
+                    list(res[: min(12, len(res))]),  # type: ignore[index]
+                    multi_tp_keys[:3],
+                )
+                if group_id < len(self.group_uses_align_state) and self.group_uses_align_state[group_id]:
+                    group_hits = self.find_all_discontinuous_hit_positions(
+                        multi_tp_values, ends, num_block, max_hit_position, self.cache_transfer_granularity
+                    )
+                else:
+                    group_hits = self.find_all_continuous_hit_positions(
+                        multi_tp_values, ends, num_block, max_hit_position, self.cache_transfer_granularity
+                    )
+                if not group_hits:
+                    return 0
+                max_hit_position = min(max_hit_position, group_hits[-1])
+                hits.append(group_hits)
+                logger.debug(
+                    "KV pool scheduler lookup group=%d keys=%d hit=%d token_len=%d",
+                    group_id,
+                    len(keys),
+                    max_hit_position,
+                    token_len,
+                )
+        except Exception as e:
+            logger.error(
+                "Remote connection failed in lookup. type=%s, error=%s. Check network and remote store.",
+                type(e).__name__,
+                e,
+            )
+            return 0
+        final_hits = self._max_intersection_hit_position(hits)
+        logger.debug(
+            "KV pool scheduler lookup final token_len=%d groups=%s hit=%d",
+            token_len,
+            kv_cache_group_ids,
+            final_hits,
+        )
+        return final_hits
+
+    @staticmethod
+    def _max_intersection_hit_position(hits: list[list[int]]) -> int:
+        """
+        For all attention groups, treat the position of the maximum common hit as the final hit position
+        """
+        if not hits:
+            return 0
+        common_elements = set(hits[0]).intersection(*hits[1:])
+        if not common_elements:
+            return 0
+        return max(common_elements)
+
+    def check_all_layers_exists(self, res: list[int], num_layers: int) -> list[int]:
+        total_chunks = len(res) // num_layers
+        result = []
+
+        for chunk_idx in range(total_chunks):
+            start = chunk_idx * num_layers
+            end = start + num_layers
+            chunk = res[start:end]
+            result.append(1 if all(x == 1 for x in chunk) else 0)
+
+        return result
+
+    @staticmethod
+    def find_all_discontinuous_hit_positions(
+        arr, ends, num_blocks: int, max_hit_position: int, cache_transfer_granularity: int
+    ) -> list[int]:
+        """
+        For mamba attn, there will be some uncached null blocks, we just collect all hit positions,
+        and use the last position as final hit position
+        """
+        hits: list[int] = []
+        for i in range(num_blocks):
+            if ends[i] > max_hit_position:
+                break
+            if all(row[i] == 1 for row in arr):
+                if ends[i] % cache_transfer_granularity == 0:
+                    hits.append(ends[i])
+        return hits
+
+    @staticmethod
+    def find_all_continuous_hit_positions(
+        arr, ends, num_blocks: int, max_hit_position: int, cache_transfer_granularity: int
+    ) -> list[int]:
+        hits: list[int] = []
+        for i in range(num_blocks):
+            if ends[i] > max_hit_position:
+                break
+            if all(row[i] == 1 for row in arr):
+                if ends[i] % cache_transfer_granularity == 0:
+                    hits.append(ends[i])
+            else:
+                break
+        return hits
+
+    def get_kv_events(self) -> list[BlockStored]:
+        if self.enable_kv_events and self.kv_send_thread is not None:
+            # collect store kv events form sending thread
+            events = self.kv_send_thread.get_kv_events()
+            return events
+        return []
+
+    def build_connector_worker_meta(self) -> AscendStoreKVConnectorWorkerMetadata | None:
+        if isinstance(self.kv_send_thread, KVCacheStoreSendingThread):
+            if ce := self.kv_send_thread.get_completed_events():
+                return AscendStoreKVConnectorWorkerMetadata(ce)
+        return None
+
+
+class KVPoolWorker(BaseKVPoolWorker):
+    """Blockwise worker: cache layout, transfer threads, and TP shard I/O."""
+
+    def __init__(
+        self,
+        vllm_config: VllmConfig,
+        use_layerwise: bool,
+        kv_cache_config: KVCacheConfig | None = None,
+    ) -> None:
+        super().__init__(vllm_config, use_layerwise, kv_cache_config)
+        self._init_cache_layout()
+
+    def set_external_slot_release_waiter(self, waiter: Callable[[int], None]) -> bool:
+        return False
+
+    def _init_cache_layout(self) -> None:
+        if self.kv_cache_config is None:
+            return
+        physical_layers = {
+            self._extract_physical_layer_index(layer_name)
+            for group in self.kv_cache_config.kv_cache_groups
+            for layer_name in group.layer_names
+        }
+        self._global_to_local_layer = {
+            global_layer: local_layer for local_layer, global_layer in enumerate(sorted(physical_layers))
+        }
+        self.num_layers = max(self.num_layers, len(physical_layers))
+        if self.num_kv_cache_groups > 1:
+            for group_id, group in enumerate(self.kv_cache_config.kv_cache_groups):
+                if group_id not in self.cacheable_group_ids:
+                    continue
+                local_layers = sorted(
+                    {
+                        self._global_to_local_layer[self._extract_physical_layer_index(name)]
+                        for name in group.layer_names
+                    }
+                )
+                for layer_index, local_layer in enumerate(local_layers):
+                    self.physical_layer_to_group_layers.setdefault(local_layer, []).append((group_id, layer_index))
+
+    def _start_kv_transfer_threads(self) -> None:
+        if self._transfer_threads_started:
+            return
+
+        if self.can_put:
+            ready_event_sending = threading.Event()
+            self.kv_send_thread = KVCacheStoreSendingThread(
+                self.m_store,
+                self.token_database,
+                self.grouped_block_size,
+                self.tp_rank,
+                self.tp_size,
+                # KVPP owners hold different layers, not PCP replicas.
+                0 if self.use_kvpp else self.pcp_rank,
+                1 if self.use_kvpp else self.pcp_size,
+                self.dcp_size,
+                self.put_step,
+                self.kv_role,
+                ready_event_sending,
+                self.group_uses_align_state,
+                self.enable_kv_events,
+                worker=self if self.tp_mismatch else None,
+            )
+            self.kv_send_thread.start()
+            ready_event_sending.wait()
+        if self.load_async:
+            ready_event = threading.Event()
+            self.kv_recv_thread = KVCacheStoreRecvingThread(
+                self.m_store,
+                self.token_database,
+                self.grouped_block_size,
+                self.tp_rank,
+                self.tp_size,
+                self.dcp_size,
+                ready_event,
+                invalid_block_ids=self._invalid_block_ids,
+                invalid_block_ids_lock=self._invalid_block_ids_lock,
+                worker=self if self.tp_mismatch else None,
+                record_operation=self._record_kv_connector_operation,
+            )
+            self.kv_recv_thread.start()
+            ready_event.wait()
+        self._transfer_threads_started = True
 
     def start_load_kv(self, metadata: AscendConnectorMetadata):
         self.current_layer = 0
@@ -968,10 +1375,6 @@ class KVPoolWorker:
                 load_group_ids,
                 self.load_async,
             )
-            if self.enable_state_store_reuse:
-                request.block_ids_by_group = [list(group) for group in request.block_ids_by_group]
-                request.current_event = torch.npu.Event()
-                request.current_event.record()
             if self.load_async:
                 self.kv_recv_thread.add_request(  # type: ignore[union-attr]
                     request,
@@ -1097,105 +1500,6 @@ class KVPoolWorker:
                 load_group_ids,
                 len(key_list_c),
             )
-
-    def _record_kv_connector_operation(self, operation: str, duration_seconds: float, num_keys: int) -> None:
-        with self._kv_stats_lock:
-            self._kv_stats.record_operation(operation, duration_seconds, num_keys)
-
-    def get_stats(self) -> AscendStoreKVConnectorStats | None:
-        with self._kv_stats_lock:
-            if self._kv_stats.is_empty():
-                return None
-            stats = self._kv_stats
-            self._kv_stats = AscendStoreKVConnectorStats()
-            return stats
-
-    def _record_invalid_blocks_ids(self, block_ids: list[int]) -> None:
-        if not block_ids:
-            return
-        with self._invalid_block_ids_lock:
-            self._invalid_block_ids.update(block_ids)
-
-    def _record_failed_request(self, request: ReqMeta) -> None:
-        request.can_save = False
-        if self.num_kv_cache_groups > 1:
-            with self._invalid_block_ids_lock:
-                self._failed_requests.add(request.req_id)
-        else:
-            self._record_invalid_blocks_ids([block_id for block_id in request.block_ids if block_id > 0])
-        self._save_disabled.set()
-
-    def get_failed_requests(self) -> set[str]:
-        with self._invalid_block_ids_lock:
-            failed = self._failed_requests.copy()
-            self._failed_requests.clear()
-        for thread in (self.kv_send_thread, self.kv_recv_thread):
-            if thread is not None:
-                failed.update(thread.get_and_clear_failed_requests())
-        return failed
-
-    def get_block_ids_with_load_errors(self) -> set[int]:
-        with self._invalid_block_ids_lock:
-            invalid_blocks = self._invalid_block_ids.copy()
-            self._invalid_block_ids.clear()
-        return invalid_blocks
-
-    def handle_released_saves(self, released_req_ids: set[str] | None) -> None:
-        """Fence only the saves of requests whose blocks this step may reuse.
-
-        Finished and preempted requests' blocks are freed immediately by the
-        scheduler; before this step's forward can reallocate those blocks,
-        every queued save chunk of exactly those requests must have drained.
-        Requests whose blocks were already released in earlier steps were
-        drained by that step's fence and never queue new puts, so they need
-        no further waiting here.
-        """
-        send_thread = self.kv_send_thread
-        if send_thread is None:
-            return
-        send_thread.raise_if_failed()
-        if isinstance(send_thread, KVCacheStoreSendingThread):
-            if self.enable_state_store_reuse:
-                for req_id in released_req_ids or ():
-                    send_thread.delete_finished_stored_request(req_id)
-                    # Retired job IDs can no longer update request progress.
-                    send_thread.reset_saved_request(req_id)
-                    self._retired_store_req_ids.discard(req_id)
-            else:
-                send_thread.wait_for_requests_saved(released_req_ids)
-        # Layerwise saves are already synchronized at each step's final layer.
-
-    def lookup_boundary_states(self, group_id: int, boundary_hashes: dict[int, bytes]) -> set[int]:
-        """Confirm every logical Store shard, not just this reader's shards.
-
-        The caller supplies already-bound dependency hashes. Returned boundaries
-        are group presence evidence, not permission to skip model computation;
-        the native hybrid coordinator and receive completion own that decision.
-        """
-        from vllm.distributed.kv_transfer.kv_connector.v1.mooncake.store.data import PoolKey as StorePoolKey
-
-        from .backend.base import require_aligned_batch_results
-
-        if not self.enable_state_store_reuse:
-            raise RuntimeError("boundary-state lookup is not enabled")
-        layout = self.state_store_layouts[group_id]
-        prefixes = layout.lookup_key_prefixes(((0, 0, 0, self.pp_rank),))
-        boundaries = list(boundary_hashes)
-        keys: list[str] = []
-        for boundary in boundaries:
-            key_hash = boundary_hashes[boundary]
-            if type(boundary) is not int or boundary <= 0 or not isinstance(key_hash, bytes) or not key_hash:
-                raise ValueError("state lookup requires explicit boundaries and bound hashes")
-            keys.extend(StorePoolKey.build_key_string(prefix, key_hash.hex()) for prefix in prefixes)
-        if not keys:
-            return set()
-        values = require_aligned_batch_results("state exists", keys, self.m_store.exists(keys))
-        width = len(prefixes)
-        return {
-            boundary
-            for index, boundary in enumerate(boundaries)
-            if all(value == 1 for value in values[index * width : (index + 1) * width])
-        }
 
     def wait_for_save(self, connector_metadata: AscendConnectorMetadata) -> None:
         current_event = None
@@ -1484,85 +1788,6 @@ class KVPoolWorker:
             return False
         return True
 
-    def _retire_finished_store_requests(self, finished_req_ids: set[str]) -> None:
-        send_thread = self.kv_send_thread
-        if not isinstance(send_thread, KVCacheStoreSendingThread):
-            return
-        for req_id in finished_req_ids:
-            if send_thread.is_stored_request(req_id):
-                self._retired_store_req_ids.add(req_id)
-            else:
-                send_thread.reset_saved_request(req_id)
-                self._retired_store_req_ids.discard(req_id)
-        for req_id in self._retired_store_req_ids.copy():
-            if not send_thread.is_stored_request(req_id):
-                send_thread.reset_saved_request(req_id)
-                self._retired_store_req_ids.discard(req_id)
-
-    def get_transfer_results(self, finished_req_ids: set[str], meta: AscendConnectorMetadata):
-        from vllm.distributed.kv_transfer.kv_connector.v1.base import KVConnectorTransferResults
-
-        if not self.enable_state_store_reuse:
-            sending, receiving = self.get_finished(finished_req_ids, meta)
-            return KVConnectorTransferResults(finished_sending=sending, finished_recving=receiving)
-        if self.kv_send_thread is not None:
-            self.kv_send_thread.raise_if_failed()
-            self._retire_finished_store_requests(finished_req_ids)
-            self.kv_send_thread.get_and_clear_finished_requests()
-        if self.kv_recv_thread is None:
-            return KVConnectorTransferResults()
-        self.kv_recv_thread.raise_if_failed()
-        receiving, failed = cast(KVCacheStoreRecvingThread, self.kv_recv_thread).take_receive_results()
-        return KVConnectorTransferResults(finished_recving=receiving, failed_recving=failed)
-
-    def get_finished(self, finished_req_ids: set[str], meta: AscendConnectorMetadata) -> tuple[set[str], set[str]]:
-        if self.kv_send_thread is not None:
-            send_thread = self.kv_send_thread
-            for req_id in meta.preempted_req_ids:
-                if isinstance(send_thread, (KVCacheStoreSendingThread, KVCacheStoreLayerSendingThread)):
-                    send_thread.delete_finished_stored_request(req_id)
-                if isinstance(send_thread, KVCacheStoreSendingThread):
-                    send_thread.reset_saved_request(req_id)
-                    self._retired_store_req_ids.discard(req_id)
-            if isinstance(send_thread, KVCacheStoreSendingThread):
-                self._retire_finished_store_requests(finished_req_ids)
-            self.kv_send_thread.discard_finished_requests(meta.preempted_req_ids)
-            # Saves complete synchronously in wait_for_save(), so the scheduler
-            # never waits for a request-level finished_sending notification.
-            self.kv_send_thread.get_and_clear_finished_requests()
-            done_sending: set[str] = set()
-        else:
-            done_sending = set()
-
-        done_recving = set()
-        if self.kv_recv_thread is not None:
-            self.kv_recv_thread.discard_finished_requests(meta.preempted_req_ids)
-            if self.load_async and not self.use_layerwise:
-                done_recving = self.kv_recv_thread.get_and_clear_finished_requests(meta.loading_req_ids)
-
-        logger.debug(
-            "Number of completed KV cache send requests: %d, receive requests: %d, tp_rank:%d",
-            len(done_sending),
-            len(done_recving),
-            self.tp_rank,
-        )
-        return done_sending, done_recving
-
-    def ensure_store_initialized(self) -> None:
-        ensure_initialized = getattr(self.m_store, "ensure_initialized", None)
-        if ensure_initialized is not None:
-            ensure_initialized()
-
-    def reset_store(self) -> None:
-        """Drain queued puts, then wipe the backend.
-
-        Join first so a put already on the send thread cannot land after
-        ``remove_all`` and repopulate the pool with the previous weights.
-        """
-        if self.kv_send_thread is not None:
-            self.kv_send_thread.request_queue.join()
-        self.m_store.remove_all()
-
     def _build_lookup_keys(
         self,
         token_len: int,
@@ -1579,385 +1804,3 @@ class KVPoolWorker:
             starts.append(start)
             ends.append(end)
         return keys, starts, ends
-
-    def lookup(
-        self,
-        token_len: int,
-        block_hashes: list[BlockHash],
-        kv_cache_group_ids: list[int] | None = None,
-        use_layerwise: bool = False,
-    ) -> int:
-        """
-        Checks the existence of KV cache of the tokens from the cache engine.
-        :param tokens: the input tokens, with shape [seq_len]
-        :return: An int indicating how many prefix tokens are cached.
-        """
-        try:
-            hits = []
-            kv_cache_group_ids = kv_cache_group_ids or [0]
-            coordinator_hit = (
-                None
-                if use_layerwise
-                else self._lookup_with_coordinator(
-                    token_len,
-                    block_hashes,
-                    kv_cache_group_ids,
-                    include_all_ranks=False,
-                )
-            )
-            if coordinator_hit is not None:
-                return coordinator_hit
-            for group_id in kv_cache_group_ids:
-                keys, starts, ends = self._build_lookup_keys(token_len, block_hashes, group_id)
-
-                if not keys:
-                    hits.append(0)
-                    continue
-
-                res = self.m_store.exists(keys)  # type: ignore[assignment]
-
-                if use_layerwise:
-                    res = self.check_all_layers_exists(
-                        res,
-                        getattr(self, "layerwise_key_layers", 0) or self.num_layers,
-                    )
-                if group_id < len(self.group_uses_align_state) and self.group_uses_align_state[group_id]:
-                    hit_end = 0
-                    for index in range(len(ends) - 1, -1, -1):
-                        if (
-                            res[index] == 1  # type: ignore[index]
-                            and ends[index] % self.cache_transfer_granularity == 0
-                        ):
-                            hit_end = ends[index]
-                            break
-                else:
-                    hit_end = ends[-1]
-                    for index, value in enumerate(res):  # type: ignore[arg-type]
-                        if value != 1:
-                            hit_end = 0
-                            for hit_index in range(index, 0, -1):
-                                if starts[hit_index] % self.cache_transfer_granularity == 0:
-                                    hit_end = starts[hit_index]
-                                    break
-                            break
-                hits.append(hit_end)
-        except Exception as e:
-            logger.error(
-                "Remote connection failed in get_common_prefix_length. type=%s, error=%s. "
-                "Check network and remote store.",
-                type(e).__name__,
-                e,
-            )
-            return 0
-        return min(hits) if hits else 0
-
-    def _get_group_num_kv_heads(self, group_id: int) -> int:
-        if self.use_mla or self.use_sparse:
-            return 1
-        if group_id < len(self.group_uses_align_state) and self.group_uses_align_state[group_id]:
-            return 1
-        return self.num_kv_head
-
-    def get_group_tp_size(self, kv_cache_group_id: int):
-        if self.enable_state_store_reuse and self.token_database.metadata[kv_cache_group_id].store_namespace:
-            return 1
-        if self.use_kvpp:
-            return self.tp_size * self.pcp_size
-        if self.tp_mismatch:
-            return self.effective_tp_size
-        if self.group_uses_align_state[kv_cache_group_id]:
-            return self.tp_size
-        return min(self.tp_size, self._get_group_num_kv_heads(kv_cache_group_id))
-
-    @staticmethod
-    def _replace_key_field(key: str, field: str, value: int) -> str:
-        marker = f"@{field}:"
-        start = key.find(marker)
-        if start < 0:
-            return key
-        value_start = start + len(marker)
-        value_end = key.find("@", value_start)
-        if value_end < 0:
-            value_end = len(key)
-        return f"{key[:value_start]}{value}{key[value_end:]}"
-
-    def _expand_lookup_keys_by_rank(self, keys: list[str], group_id: int) -> list[str]:
-        # PCP replicas share keys; expand only the physical KV partitions.
-        expanded: list[str] = []
-        num_head_or_tp_ranks = self.get_group_tp_size(group_id)
-        # Keep each rank shard's block/layer keys contiguous to match
-        # lookup_scheduler()'s [rank_shard][block] result slicing.
-        for pp_rank in range(self.pp_size):
-            for dcp_rank in range(self.dcp_size):
-                for head_or_tp_rank in range(num_head_or_tp_ranks):
-                    for key in keys:
-                        rank_key = self._replace_key_field(key, "dcp", dcp_rank)
-                        rank_key = self._replace_key_field(rank_key, "head_or_tp_rank", head_or_tp_rank)
-                        expanded.append(self._replace_key_field(rank_key, "pp_rank", pp_rank))
-        return expanded
-
-    def _expand_lookup_key_variants(self, key: str, group_id: int, include_all_ranks: bool) -> list[str]:
-        if not include_all_ranks:
-            return [key]
-        return self._expand_lookup_keys_by_rank([key], group_id)
-
-    def _lookup_with_coordinator(
-        self,
-        token_len: int,
-        block_hashes: list[BlockHash],
-        kv_cache_group_ids: list[int],
-        include_all_ranks: bool,
-        hbm_hit_tokens: int = 0,
-        cache_key_hashes: dict[int, bytes] | None = None,
-    ) -> int | None:
-        if self.cache_coordinator is None:
-            return None
-        if sorted(kv_cache_group_ids) != list(range(self.num_kv_cache_groups)):
-            return None
-        coordinator = self.cache_coordinator
-
-        def query_group_hits(
-            group_id: int,
-            group_block_hashes: Sequence[BlockHash | str],
-            lookup_mask: Sequence[bool] | None,
-        ) -> list[BlockHash | str]:
-            group_block_size = coordinator.group_effective_block_sizes[group_id]
-            present: list[BlockHash | str] = []
-            lookup_start = hbm_hit_tokens // group_block_size * group_block_size
-            if cache_key_hashes is not None and group_id in self.state_store_layouts:
-                candidates = {
-                    (index + 1) * group_block_size: chunk_hash
-                    for index, chunk_hash in enumerate(group_block_hashes)
-                    if hbm_hit_tokens < (index + 1) * group_block_size <= token_len
-                    and (lookup_mask is None or (index < len(lookup_mask) and lookup_mask[index]))
-                }
-                bound = {
-                    boundary: cache_key_hashes[boundary] for boundary in candidates if boundary in cache_key_hashes
-                }
-                found = self.lookup_boundary_states(group_id, bound)
-                return [candidates[boundary] for boundary in candidates if boundary in found]
-
-            keys: list[str] = []
-            chunk_hashes: list[BlockHash | str] = []
-            variant_counts: list[int] = []
-            for _, end, key_string, chunk_hash in self.token_database.process_token_key_strings(
-                token_len,
-                block_hashes,
-                mask_num=lookup_start,
-                kv_cache_group_id=group_id,
-                chunk_mask=lookup_mask,
-            ):
-                if cache_key_hashes is not None:
-                    bound_hash = cache_key_hashes.get(end)
-                    if bound_hash is None:
-                        continue
-                    key_string = self.token_database.key_for(bound_hash, kv_cache_group_id=group_id)
-                variants = self._expand_lookup_key_variants(key_string, group_id, include_all_ranks)
-                keys.extend(variants)
-                chunk_hashes.append(chunk_hash)
-                variant_counts.append(len(variants))
-
-            if keys:
-                res = self.m_store.exists(keys)  # type: ignore[assignment]
-                if cache_key_hashes is not None:
-                    from .backend.base import require_aligned_batch_results
-
-                    res = require_aligned_batch_results("hybrid exists", keys, res)
-                offset = 0
-                for chunk_hash, count in zip(chunk_hashes, variant_counts, strict=True):
-                    values = res[offset : offset + count]  # type: ignore[index]
-                    if values and all(value == 1 for value in values):
-                        present.append(chunk_hash)
-                    offset += count
-
-            logger.debug(
-                "KV pool coordinator lookup group=%d token_len=%d keys=%d exists_chunks=%d sample_keys=%s",
-                group_id,
-                token_len,
-                len(keys),
-                len(present),
-                keys[:3],
-            )
-            return present
-
-        return coordinator.find_reachable_hit_tokens(
-            block_hashes,
-            token_len,
-            query_group_hits,
-            log_context="KV pool coordinator lookup",
-            hbm_hit_tokens=hbm_hit_tokens,
-        )
-
-    def lookup_scheduler(
-        self,
-        token_len: int,
-        block_hashes: list[BlockHash],
-        kv_cache_group_ids: list[int] | None = None,
-        use_layerwise: bool = False,
-        hbm_hit_tokens: int = 0,
-        cache_key_hashes: dict[int, bytes] | None = None,
-    ) -> int:
-        """
-        Checks the existence of KV cache of the tokens from the cache engine.
-        :param tokens: the input tokens, with shape [seq_len]
-        :return: An int indicating how many prefix tokens are cached.
-        """
-        try:
-            if cache_key_hashes is not None and (not self.enable_state_store_reuse or not self.state_store_layouts):
-                raise ValueError("accepted-state lookup requires registered state layouts")
-            hits: list[list[int]] = []
-            max_hit_position = self.max_model_len
-            kv_cache_group_ids = kv_cache_group_ids or [0]
-            coordinator_hit = (
-                None
-                if use_layerwise
-                else self._lookup_with_coordinator(
-                    token_len,
-                    block_hashes,
-                    kv_cache_group_ids,
-                    include_all_ranks=True,
-                    hbm_hit_tokens=hbm_hit_tokens,
-                    cache_key_hashes=cache_key_hashes,
-                )
-            )
-            if coordinator_hit is not None:
-                return coordinator_hit
-            if cache_key_hashes is not None:
-                raise ValueError("state lookup requires the native hybrid coordinator")
-            for group_id in kv_cache_group_ids:
-                keys, starts, ends = self._build_lookup_keys(token_len, block_hashes, group_id)
-
-                if not keys:
-                    return 0
-
-                multi_tp_keys = self._expand_lookup_keys_by_rank(keys, group_id)
-                num_ranks = len(multi_tp_keys) // len(keys)
-                res = self.m_store.exists(multi_tp_keys)  # type: ignore[assignment]
-                num_block = len(keys)
-                if use_layerwise:
-                    res = self.check_all_layers_exists(
-                        res,
-                        getattr(self, "layerwise_key_layers", 0) or self.num_layers,
-                    )
-                    num_block = len(keys) // (getattr(self, "layerwise_key_layers", 0) or self.num_layers)
-                multi_tp_values = [
-                    res[i * num_block : (i + 1) * num_block]  # type: ignore[index]
-                    for i in range(num_ranks)
-                ]
-                logger.debug(
-                    "KV pool lookup request token_len=%d group=%d keys=%d multi_tp_keys=%d "
-                    "exists_count=%d/%d exists_sample=%s sample_keys=%s",
-                    token_len,
-                    group_id,
-                    len(keys),
-                    len(multi_tp_keys),
-                    sum(1 for value in res if value == 1),  # type: ignore[union-attr]
-                    len(res),
-                    list(res[: min(12, len(res))]),  # type: ignore[index]
-                    multi_tp_keys[:3],
-                )
-                if group_id < len(self.group_uses_align_state) and self.group_uses_align_state[group_id]:
-                    group_hits = self.find_all_discontinuous_hit_positions(
-                        multi_tp_values, ends, num_block, max_hit_position, self.cache_transfer_granularity
-                    )
-                else:
-                    group_hits = self.find_all_continuous_hit_positions(
-                        multi_tp_values, ends, num_block, max_hit_position, self.cache_transfer_granularity
-                    )
-                if not group_hits:
-                    return 0
-                max_hit_position = min(max_hit_position, group_hits[-1])
-                hits.append(group_hits)
-                logger.debug(
-                    "KV pool scheduler lookup group=%d keys=%d hit=%d token_len=%d",
-                    group_id,
-                    len(keys),
-                    max_hit_position,
-                    token_len,
-                )
-        except Exception as e:
-            logger.error(
-                "Remote connection failed in lookup. type=%s, error=%s. Check network and remote store.",
-                type(e).__name__,
-                e,
-            )
-            return 0
-        final_hits = self._max_intersection_hit_position(hits)
-        logger.debug(
-            "KV pool scheduler lookup final token_len=%d groups=%s hit=%d",
-            token_len,
-            kv_cache_group_ids,
-            final_hits,
-        )
-        return final_hits
-
-    @staticmethod
-    def _max_intersection_hit_position(hits: list[list[int]]) -> int:
-        """
-        For all attention groups, treat the position of the maximum common hit as the final hit position
-        """
-        if not hits:
-            return 0
-        common_elements = set(hits[0]).intersection(*hits[1:])
-        if not common_elements:
-            return 0
-        return max(common_elements)
-
-    def check_all_layers_exists(self, res: list[int], num_layers: int) -> list[int]:
-        total_chunks = len(res) // num_layers
-        result = []
-
-        for chunk_idx in range(total_chunks):
-            start = chunk_idx * num_layers
-            end = start + num_layers
-            chunk = res[start:end]
-            result.append(1 if all(x == 1 for x in chunk) else 0)
-
-        return result
-
-    @staticmethod
-    def find_all_discontinuous_hit_positions(
-        arr, ends, num_blocks: int, max_hit_position: int, cache_transfer_granularity: int
-    ) -> list[int]:
-        """
-        For mamba attn, there will be some uncached null blocks, we just collect all hit positions,
-        and use the last position as final hit position
-        """
-        hits: list[int] = []
-        for i in range(num_blocks):
-            if ends[i] > max_hit_position:
-                break
-            if all(row[i] == 1 for row in arr):
-                if ends[i] % cache_transfer_granularity == 0:
-                    hits.append(ends[i])
-        return hits
-
-    @staticmethod
-    def find_all_continuous_hit_positions(
-        arr, ends, num_blocks: int, max_hit_position: int, cache_transfer_granularity: int
-    ) -> list[int]:
-        hits: list[int] = []
-        for i in range(num_blocks):
-            if ends[i] > max_hit_position:
-                break
-            if all(row[i] == 1 for row in arr):
-                if ends[i] % cache_transfer_granularity == 0:
-                    hits.append(ends[i])
-            else:
-                break
-        return hits
-
-    def get_kv_events(self) -> list[BlockStored]:
-        if self.enable_kv_events and self.kv_send_thread is not None:
-            # collect store kv events form sending thread
-            events = self.kv_send_thread.get_kv_events()
-            return events
-        return []
-
-    def build_connector_worker_meta(self) -> AscendStoreKVConnectorWorkerMetadata | None:
-        if self.enable_state_store_reuse and self.kv_send_thread is not None:
-            self.kv_send_thread.raise_if_failed()
-        if isinstance(self.kv_send_thread, KVCacheStoreSendingThread):
-            if ce := self.kv_send_thread.get_completed_events():
-                return AscendStoreKVConnectorWorkerMetadata(ce)
-        return None

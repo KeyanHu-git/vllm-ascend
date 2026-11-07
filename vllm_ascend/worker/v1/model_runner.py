@@ -154,7 +154,6 @@ from vllm_ascend.compilation.breakable_aclgraph import BreakableACLGraphWrapper
 from vllm_ascend.core.kv_cache_interface import is_circular_kv_cache_spec
 from vllm_ascend.device.hardware_profile import HardwareCapability, get_current_hardware_profile
 from vllm_ascend.distributed.kv_transfer.kv_p2p.sfa_pd_rd2h import get_prebound_copy_sfa_slots
-from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store import state_handoff
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.layerwise.layerwise_cache_layout import (
     allocate_shared_indexer_cache,
     apply_layerwise_kv_cache_plan,
@@ -397,8 +396,6 @@ class NPUModelRunner(GPUModelRunner):
 
         with _torch_cuda_wrapper():
             super().__init__(vllm_config, device)
-        self._uses_boundary_state_store = state_handoff.uses_boundary_state_store(vllm_config.kv_transfer_config)
-        self._store_draft_cache_limits: dict[str, int] = {}
         self.lookback_token_ids: CpuGpuBuffer | None = None
 
         self.device_metadata_executor: DeviceMetadataExecutor | None = None
@@ -1003,19 +1000,6 @@ class NPUModelRunner(GPUModelRunner):
 
     def _update_states(self, scheduler_output: "SchedulerOutput") -> Callable | None:
         self._update_replay_requests(scheduler_output)
-        if self._store_draft_cache_limits:
-            for req_id in scheduler_output.finished_req_ids:
-                self._store_draft_cache_limits.pop(req_id, None)
-        if self._uses_boundary_state_store and self.num_accepted_tokens_event is not None:
-            if (
-                state_handoff.has_state_transfers(scheduler_output.kv_connector_metadata)
-                or scheduler_output.kv_cache_block_copies
-            ):
-                # Join the previous step's native accepted-state copies before
-                # reusing their allocations for this step's CoW or
-                # Store save/load event, including steps with no forward. Waiting
-                # only in _prepare_inputs misses the no-forward early return.
-                torch.npu.current_stream().wait_event(self.num_accepted_tokens_event)
         # Temporary rewind guard for KV-load-failure recompute.
         # This can be removed after the upstream fix is merged.
         req_data = scheduler_output.scheduled_cached_reqs
@@ -2137,7 +2121,6 @@ class NPUModelRunner(GPUModelRunner):
                     self.input_batch,
                     self.discard_request_indices.gpu,
                     self.num_discarded_requests,
-                    scheduler_output.num_scheduled_tokens,
                 )
             )
             self._copy_valid_sampled_token_count(next_token_ids, valid_sampled_tokens_count)
@@ -2171,7 +2154,6 @@ class NPUModelRunner(GPUModelRunner):
                     self.input_batch,
                     self.discard_request_indices.gpu,
                     self.num_discarded_requests,
-                    scheduler_output.num_scheduled_tokens,
                 )
                 self._copy_valid_sampled_token_count(next_token_ids, valid_sampled_tokens_count)
 
@@ -2864,7 +2846,6 @@ class NPUModelRunner(GPUModelRunner):
                     self.input_batch,
                     self.discard_request_indices.gpu,
                     self.num_discarded_requests,
-                    scheduler_output.num_scheduled_tokens,
                 )
             )
             self._copy_valid_sampled_token_count(
@@ -2896,28 +2877,6 @@ class NPUModelRunner(GPUModelRunner):
         self._draft_probs = None
         self._draft_prob_req_ids = None
         self._copy_draft_token_ids_to_cpu(scheduler_output, zeros_only=True)
-
-    def _limit_store_draft_saves(
-        self, scheduler_output: "SchedulerOutput", draft_ran: bool
-    ) -> None:
-        """Publish only prefixes covered by the target and the drafter."""
-        limits = self._store_draft_cache_limits
-        if draft_ran and not limits:
-            return
-        for req_id in scheduler_output.num_scheduled_tokens:
-            index = self.input_batch.req_id_to_index[req_id]
-            computed = int(self.input_batch.num_computed_tokens_cpu[index])
-            if draft_ran:
-                # Drafting from at/before the hole rebuilds the prefix.
-                if req_id in limits and computed <= limits[req_id]:
-                    del limits[req_id]
-            else:
-                # execute_model has applied the native deferred count correction
-                # before sample_tokens reaches this save-coverage check.
-                prefix = computed
-                limits[req_id] = min(limits.get(req_id, prefix), prefix)
-        if limits:
-            state_handoff.limit_save_prefixes(scheduler_output.kv_connector_metadata, limits)
 
     @torch.inference_mode()
     def sample_tokens(
@@ -3063,8 +3022,6 @@ class NPUModelRunner(GPUModelRunner):
             # forward when speculative decoding is enabled. Finalize here after
             # draft model runs so KV pool save/put can complete.
             if self.speculative_config is not None:
-                if self._uses_boundary_state_store:
-                    self._limit_store_draft_saves(scheduler_output, input_fits_in_drafter)
                 self.finalize_kv_connector()
 
         model_runner_output = ModelRunnerOutput(
@@ -5011,14 +4968,17 @@ class NPUModelRunner(GPUModelRunner):
                 kernel_block_sizes=kernel_block_sizes,
                 kv_cache_allocation_context=kv_cache_allocation_context,
             )
-        # Cache layouts are final and bound now; prepare on disposable
-        # scratch storage before any warmup forward, graph capture or request.
+        # Register the exact bound state-copy layouts; kernel_warmup owns
+        # compilation before model dummy runs and graph capture.
         from vllm_ascend.ops.kda_state_copy_plan import initialize_kda_state_copy
 
-        initialize_kda_state_copy(
-            self.compilation_config.static_forward_context,
-            self.scheduler_config.max_num_seqs,
-        )
+        registry = getattr(self, "jit_warmup_registry", None)
+        with registry.activate() if registry is not None else nullcontext():
+            initialize_kda_state_copy(
+                self.compilation_config.static_forward_context,
+                self.scheduler_config.max_num_seqs,
+            )
+
         if any(is_circular_kv_cache_spec(g.kv_cache_spec) for g in kv_cache_config.kv_cache_groups):
             # Lazy import avoids the model/cache registration cycle.
             from vllm_ascend.models.deepseek_v41.compressor import DeepseekV41Compressor

@@ -42,6 +42,8 @@ class BatchResultShapeError(RuntimeError):
 class TransferCompletionUnknown(RuntimeError):
     """DMA termination is unproven; referenced buffers must remain alive."""
 
+    transfer_completion_unknown = True
+
 
 class StoreCapacityError(RuntimeError):
     """PUT allocation was rejected; all other batch rows completed."""

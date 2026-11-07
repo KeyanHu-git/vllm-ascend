@@ -90,10 +90,10 @@ This bulk fast path uses physical-page-major object contents instead of the prev
     ldd --version
     ```
 
-2. Install Mooncake:
+2. The vllm-ascend Docker images install Mooncake. Verify the installation:
 
     ```shell
-    python3 -m pip install mooncake-transfer-engine-npu==0.3.11.post1 --extra-index-url https://mirrors.aliyun.com/pypi/web/simple
+    python3 -m pip show mooncake-transfer-engine-npu
     ```
 
 #### Step 2: Configure mooncake.json and Start mooncake_master
@@ -253,7 +253,6 @@ This bulk fast path uses physical-page-major object contents instead of the prev
         # parameters required for kv pool and Mooncake
         export PYTHONHASHSEED=0
         export MOONCAKE_CONFIG_PATH="<config_dir>/mooncake.json"
-        export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/mooncake:$LD_LIBRARY_PATH
 
         if [ "$ROLE" == "prefill" ]; then
             KV_ROLE="kv_producer"
@@ -417,7 +416,6 @@ This bulk fast path uses physical-page-major object contents instead of the prev
     # parameters required for kv pool and Mooncake
     export PYTHONHASHSEED=0
     export MOONCAKE_CONFIG_PATH="<config_dir>/mooncake.json"
-    export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/mooncake:$LD_LIBRARY_PATH
 
     echo "Starting vLLM on Series: $HARDWARE_SERIES"
 
@@ -1597,46 +1595,8 @@ Refer to the verification operations in Steps 1–5 of Configuration Examples.
 | `prefill_pp_size` | int | 1 | Required when Prefill PP + consumer writes | Positive integer | Prefill PP size. |
 | `prefill_pp_layer_partition` | str | No default | No | Comma-separated layer numbers, e.g., "30,31" | Prefill PP layer partition. If not configured, layers are evenly divided by `prefill_pp_size`. |
 | `qos_priority` | int | 0 | No | [0, 4] (integer, larger = higher priority) | KV Pool transfer QoS priority. |
-| `enable_state_store_reuse` | bool | false | No | true / false | Enable joint accepted-state checkpoints. Requires bulk Mooncake transfer and `kv_load_failure_policy=fail`. |
-| `state_store_tp_size` | int | No default | When state reuse is enabled | Positive integer | Shared logical Store partition count on writers and readers. |
-| `max_state_save_jobs` | int | No default | When state reuse is enabled | Positive integer | Maximum outstanding checkpoint save jobs. |
-| `max_state_save_blocks` | int | No default | When state reuse is enabled | Positive integer | Maximum source blocks retained by checkpoint saves. |
-| `cache_prefix` | str | Empty string | No | Shared namespace | State checkpoint namespace; change it when checkpoint framing changes. |
 
 **NOTE:** When using `AscendStoreConnector` together with `MooncakeConnector` (V1) or `MooncakeConnectorV2`, the current TCP port allocations may still overlap ports reserved by other workers or components. This includes V1 worker handshake ports and V2 scheduler control ports. Distinct DP indices do not guarantee disjoint TCP port ranges; check these allocations against worker and component port reservations before deployment. `lookup_rpc_port` only identifies the local IPC endpoint and does not resolve these TCP port conflicts.
-
-### Accepted-state checkpoints for hybrid GLM models
-
-The bulk Store path can jointly reuse attention pages and accepted recurrent
-states from a committed decode checkpoint. Enable `enable_state_store_reuse`
-in the `AscendStoreConnector` extra configuration and set
-`state_store_tp_size` to the same logical Store partition count on both peers.
-Set positive `max_state_save_jobs` and `max_state_save_blocks` limits for
-outstanding save jobs and pinned source blocks. Use the existing
-`save_decode_cache` option on the writer to include checkpoints
-created during decoding; the option does not create a checkpoint unless the
-native scheduler offers one.
-
-This mode currently supports GLM-5.3-Flash (`glm5_next`) with the V1 model runner, bulk transfer,
-TP-only cache ownership (`pipeline_parallel_size=1`, PCP=1 and DCP=1),
-a BF16 pooled indexer cache, and
-`kv_load_failure_policy="fail"`. INT8-packed MLA pages remain supported; FP8
-pooled-indexer K/scale checkpoint framing is not supported. It requires the
-Mooncake backend's checked buffer-transfer APIs. Do not enable it with
-layerwise transfer, KVPP, pipeline parallelism, PCP/DCP, or the V2 model runner. MTP uses a single
-predictor layer; its state identity includes the committed next input token.
-Writers and readers must share checkpoint/page framing and `cache_prefix`;
-use a fresh prefix when layouts change. TP sizes may differ only where the
-registered state and replicated-page layouts support that mapping.
-
-Loading roles use native asynchronous admission (`load_async` is enabled
-by the connector). A missing or short read fails the request. These layout
-and runner constraints are checked during initialization.
-
-The connector retains native scheduling, model kernels and sampling. It waits
-for accepted-state copies before export and checked transfer completion before
-publishing the checkpoint. Reuse changes the recomputation interval, so assess
-answer quality and latency with matched requests and actual external hits.
 
 ### ASCEND_GLOBAL_RESOURCE_CONFIG
 
@@ -1751,3 +1711,91 @@ Note the following when enabling KV Pool for DSv4. Other historical known issues
 ### Issue 7: AscendStore KV Pool Known Issues (v0.23.0)
 
 For the v0.23.0 AscendStore KV Pool known issues, see [vllm-ascend issue #12390](https://github.com/vllm-project/vllm-ascend/issues/12390).
+
+## Native Mooncake Store on Ascend
+
+Use `MooncakeStoreConnector` for upstream Store scheduling and transfer
+lifecycle with Ascend device bindings. Cache support follows the native
+`AttentionSpec` and `MambaSpec` contracts rather than a model-name whitelist.
+`AscendStoreConnector` retains its existing multi-backend and layerwise modes.
+
+The adapter reuses native lookup, asynchronous queues, save progress,
+capacity-pressure handling, block references and layout descriptors. It binds
+Ascend's separate K/V planes, packed MLA pages and typed recurrent states to
+those layouts without packing copies. Shared typed Mamba pages are exposed as
+zero-copy byte views; separately allocated GDN states use their real strides.
+Full native recurrent states are saved, including speculative records.
+
+This route requires vLLM with connector lookahead hashing (upstream #64096)
+and the device/layout extensions in [vLLM #66294](https://github.com/vllm-project/vllm/pull/66294),
+plus scheduler completion polling from [vLLM #66295](https://github.com/vllm-project/vllm/pull/66295).
+Install the compatible source pairing before enabling the connector. The separate Mamba partial-checkpoint
+scheduling fix is platform-wide: it restores native partial-hit splitting for
+legacy Store and P2P connectors as well as this route.
+
+```json
+{
+  "kv_connector": "MooncakeStoreConnector",
+  "kv_role": "kv_both",
+  "kv_load_failure_policy": "fail",
+  "kv_connector_extra_config": {
+    "store_tp_size": 4,
+    "save_decode_cache": true,
+    "load_async": true,
+    "cache_prefix": "native-store-v1"
+  }
+}
+```
+
+Use the same `store_tp_size` and native `prefix-match-unit` across peers for
+cross-TP reuse. Without Store TP sharing, native rank-local registration is
+used. A decode writer can set `enable_lookup: false` while keeping
+`save_decode_cache: true`. GET does not delete stored objects.
+
+For full-attention backends that support head-major KV caches, set
+`VLLM_KV_CACHE_LAYOUT=HND` before starting each peer. This uses Ascend's existing
+cache layout and reduces scattered transfer segments when TP sharing splits
+an attention cache across Store shards. It does not add per-request packing
+copies. Token-major and
+head-major attention objects use different Store namespaces; use a fresh
+`cache_prefix` when changing the layout for an experiment or deployment.
+
+Cache identity, MTP lookahead dependencies and checkpoint backoff follow vLLM.
+The connector uses native request block hashes, including the committed
+successor tokens required by the drafter. No Ascend-specific hash format or
+model whitelist is added. MultiConnector enables lookahead hashing only when
+all configured children support it; otherwise vLLM retains legacy matching
+and backoff.
+
+Cache layouts and state shapes must agree at each logical Store shard. Use a
+fresh `cache_prefix` when migrating from the earlier accepted-history format:
+this implementation stores full native states and has no private GLM schema.
+The planar K/V path accepts FP16/BF16 caches; separate quantization-scale views
+need an explicit compatible layout. Model weight quantization is independent
+of KV dtype.
+
+KV events use the native `BlockStored.lookahead_token_ids` contract. Event
+consumers must include those tokens when reconstructing lookahead hashes.
+In a MultiConnector, native Store must be the only event producer.
+
+### Recorded decode-reuse performance checks
+
+The paired Qwen3.8-27B-W8A8 measurements are retained under
+`benchmarks/data/mooncake_store_reuse_qwen38_27b.json`. Check those records with:
+
+```bash
+python benchmarks/check_mooncake_store_reuse.py \
+    benchmarks/data/mooncake_store_reuse_qwen38_27b.json
+```
+
+The checker requires real external Store hits, a decode-origin checkpoint
+and nonzero MTP acceptance. It applies the recorded ten-pair gates: median
+paired restore TTFT must improve; source or restore TPOT is a regression
+when B is slower in at least nine pairs. It returns a nonzero status when
+a gate fails. This checks supplied measurements; it does not run inference.
+
+The recorded TP1 runs use serial requests, 1,536 source output tokens and
+1,815-input/32-output-token continuations with fixed output lengths. A/B
+use separate devices without crossover. Source/restore timing, layout
+fixtures and the later completion-polling validation retain their original
+version labels. New runs should record the same fields in a separate file.

@@ -14,21 +14,36 @@
 
 """Apply Ascend-specific Mamba chunk-boundary handling.
 
-Chunk boundaries and consumer verifier padding are handled by vLLM.
+A newly admitted KV-consumer request can have one prompt token left after the
+external cache hit. The waiting scheduler pads that token to a ``1 + K``
+speculative verifier window before Mamba alignment is applied. If the window
+starts mid-block, the alignment split can shorten its physical width while the
+request still advertises all ``K`` speculative placeholders.
 
-Producer and standalone instances use the same EAGLE block-drop policy as
-the cache coordinator; other instances retain the configured upstream policy.
+Decode consumers preserve the complete verifier window. When core enables
+partial cache hits, native splitting chooses prompt-tail and shared-prefix
+checkpoints for continued prefill. Coarse-cache sparse index-kpool producers
+retain the resolved common cache-group alignment. Other models retain the
+upstream behavior.
+
+Current vLLM resolves MTP lookahead hashing and checkpoint backoff together.
+Only the v0.32 pairing retains its legacy producer/standalone exemption.
 """
 
 import functools
 import inspect
 
 from vllm.v1.core.sched.scheduler import Scheduler
+from vllm.v1.kv_cache_interface import get_mamba_prefill_checkpoint_position
 from vllm.v1.request import Request
 
 from vllm_ascend.patch.platform.patch_kv_cache_coordinator import (
     _skips_eagle_block_drop,
 )
+from vllm_ascend.patch.platform.patch_mamba_config import (
+    _get_sparse_index_kpool,
+)
+from vllm_ascend.utils import vllm_version_is
 
 _EXPECTED_PARAMETERS = (
     "self",
@@ -49,14 +64,51 @@ def _mamba_block_aligned_split(
     num_new_local_computed_tokens: int = 0,
     num_external_computed_tokens: int = 0,
 ) -> int:
-    """Delegate boundary selection to vLLM with the coordinator role policy.
-
-    Producer/standalone split decisions must follow the coordinator's EAGLE
-    block-drop exemption. Temporarily clear the relevant bit while calling the
-    original method, then restore it. Scheduling is single-threaded per
-    scheduler instance. Consumers and kv_both retain the upstream drop policy.
-    """
+    """Preserve Ascend verifier windows and native checkpoint boundaries."""
     kv_transfer_config = self.vllm_config.kv_transfer_config
+    # A consumer only needs the unsplit verifier window after some prefix has
+    # already been computed locally or loaded from the connector.  ``kv_both``
+    # also handles cold prefills; bypassing alignment for those requests means
+    # no reusable Mamba state is ever materialized, so neither HBM nor the KV
+    # pool can cache the prefix.
+    num_computed_tokens = request.num_computed_tokens + num_new_local_computed_tokens + num_external_computed_tokens
+    if (
+        kv_transfer_config is not None
+        and kv_transfer_config.is_kv_consumer
+        and num_computed_tokens > 0
+        and (not self.mamba_partial_cache_hit or num_computed_tokens >= request.num_tokens - 1)
+    ):
+        return num_new_tokens
+
+    # Native partial-cache eligibility also owns the prompt-tail/shared-prefix
+    # checkpoint stops. Do not bypass those stops with physical-page splitting.
+    if not self.mamba_partial_cache_hit and _get_sparse_index_kpool(self.vllm_config.model_config) is not None:
+        if num_computed_tokens < max(
+            request.num_prompt_tokens,
+            request.num_tokens - 1,
+        ):
+            block_size = self.block_size
+            drop_eagle = getattr(self, "use_eagle_block_drop", self.use_eagle)
+            if vllm_version_is("0.32.0"):
+                last_cache_position = request.num_tokens - request.num_tokens % block_size
+                if drop_eagle and not _skips_eagle_block_drop(kv_transfer_config):
+                    last_cache_position = max(last_cache_position - block_size, 0)
+            else:
+                last_cache_position = get_mamba_prefill_checkpoint_position(
+                    request.num_tokens,
+                    block_size,
+                    drop_eagle,
+                    self.num_hash_lookahead_tokens,
+                )
+            scheduled_end = num_computed_tokens + num_new_tokens
+            if scheduled_end < last_cache_position:
+                chunked_tokens = num_new_tokens // block_size * block_size
+                if chunked_tokens > 0:
+                    num_new_tokens = chunked_tokens
+            elif num_computed_tokens < last_cache_position < scheduled_end:
+                num_new_tokens = last_cache_position - num_computed_tokens
+        return num_new_tokens
+
     if not _skips_eagle_block_drop(kv_transfer_config):
         return _original_mamba_block_aligned_split(
             self,
