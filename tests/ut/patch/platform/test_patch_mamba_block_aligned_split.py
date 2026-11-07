@@ -348,7 +348,7 @@ def test_sparse_kpool_partial_shared_prefix_checkpoint(partial_cache_hit, expect
 )
 @pytest.mark.parametrize("producer", [False, True], ids=["standalone", "producer"])
 def test_main_passes_resolved_policy_to_native_split(monkeypatch, lookahead, effective_drop, producer):
-    observed = {}
+    observed: dict[str, object] = {}
     monkeypatch.setattr(mod, "_original_mamba_block_aligned_split", _fake_original_recording(observed))
     scheduler = _scheduler(is_kv_consumer=False if producer else None, is_kv_producer=producer)
     scheduler.num_hash_lookahead_tokens = lookahead

@@ -14,9 +14,12 @@ from importlib.machinery import PathFinder
 from numbers import Integral
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import Mock
 
-VLLM = Path(next(iter(PathFinder.find_spec("vllm").submodule_search_locations)))
+vllm_spec = PathFinder.find_spec("vllm")
+assert vllm_spec is not None and vllm_spec.submodule_search_locations
+VLLM = Path(vllm_spec.submodule_search_locations[0])
 STORE = Path(__file__).resolve().parents[4] / "vllm_ascend/distributed/kv_transfer/kv_pool/ascend_store"
 
 
@@ -30,7 +33,7 @@ def load_classes(path, names, namespace):
 
 class NativeWorkerReuseTests(unittest.TestCase):
     def setUp(self):
-        namespace = {"MooncakeBackend": object}
+        namespace: dict[str, Any] = {"MooncakeBackend": object}
         load_classes(STORE / "backend/base.py", {"StoreCapacityError", "TransferCompletionUnknown"}, namespace)
         load_classes(STORE / "backend/mooncake_backend.py", {"NativeMooncakeStoreAdapter"}, namespace)
         self.capacity_error = namespace["StoreCapacityError"]

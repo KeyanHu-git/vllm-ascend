@@ -16,24 +16,28 @@ import types
 import unittest
 from importlib.machinery import PathFinder
 from pathlib import Path
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
-VLLM = Path(next(iter(PathFinder.find_spec("vllm").submodule_search_locations)))
+_vllm_spec = PathFinder.find_spec("vllm")
+assert _vllm_spec is not None and _vllm_spec.submodule_search_locations
+VLLM = Path(_vllm_spec.submodule_search_locations[0])
 STORE = VLLM / "distributed/kv_transfer/kv_connector/v1/mooncake/store"
 NATIVE = "vllm.distributed.kv_transfer.kv_connector.v1.mooncake.store"
 
 
-def load(name, path):
+def load(name: str, path: Path) -> Any:
     spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
 
-def stub_imports(path):
+def stub_imports(path: Path) -> None:
     for node in ast.walk(ast.parse(path.read_text())):
-        if not isinstance(node, ast.ImportFrom) or not node.module.startswith("vllm."):
+        if not isinstance(node, ast.ImportFrom) or node.module is None or not node.module.startswith("vllm."):
             continue
         module = sys.modules.get(node.module) or types.ModuleType(node.module)
         for alias in node.names:
@@ -43,17 +47,22 @@ def stub_imports(path):
 
 
 class NativeSchedulerReuseTest(unittest.TestCase):
+    modules = patch.dict(sys.modules)
+    data: ClassVar[Any]
+    native: ClassVar[Any]
+
     @classmethod
     def setUpClass(cls):
-        cls.modules = patch.dict(sys.modules)
         cls.modules.start()
         stub_imports(STORE / "data.py")
-        sys.modules["torch"] = types.SimpleNamespace(cuda=types.SimpleNamespace(Event=object))
-        sys.modules["vllm.logger"].init_logger = logging.getLogger
-        sys.modules["vllm.utils.math_utils"].cdiv = lambda a, b: (a + b - 1) // b
+        torch_stub = types.ModuleType("torch")
+        torch_stub.__dict__.update(cuda=types.SimpleNamespace(Event=object))
+        sys.modules["torch"] = torch_stub
+        sys.modules["vllm.logger"].__dict__.update(init_logger=logging.getLogger)
+        sys.modules["vllm.utils.math_utils"].__dict__.update(cdiv=lambda a, b: (a + b - 1) // b)
         cls.data = load(NATIVE + ".data", STORE / "data.py")
         stub_imports(STORE / "scheduler.py")
-        sys.modules["vllm.v1.attention.backends.utils"].NULL_BLOCK_ID = 0
+        sys.modules["vllm.v1.attention.backends.utils"].__dict__.update(NULL_BLOCK_ID=0)
         cls.native = load(NATIVE + ".scheduler", STORE / "scheduler.py")
 
     @classmethod
