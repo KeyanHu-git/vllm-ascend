@@ -51,7 +51,9 @@ def register_native_cache_views(worker, kv_caches):
     """
     config = worker._kv_cache_config
     context = worker._ascend_vllm_config.compilation_config.static_forward_context
-    databases, device_tensors, host_tensors = [], [], []
+    databases = []
+    device_tensors: list[torch.Tensor] = []
+    host_tensors: list[torch.Tensor] = []
     for group, db in zip(worker._kv_cache_groups, worker.token_dbs, strict=True):
         old = db.store_layout
         num_blocks = config.hisparse_host_num_blocks if group.host_resident else config.num_blocks

@@ -744,11 +744,15 @@ class MooncakeBackend(Backend):
             return 0
         self.set_device()
         if pointer in self._shared_te_registered_ptrs:
-            status = global_te.transfer_engine.unregister_memory(pointer)
+            engine = global_te.transfer_engine
+            assert engine is not None
+            status = engine.unregister_memory(pointer)
             if status == 0:
                 self._shared_te_registered_ptrs.remove(pointer)
             return status
-        return self.store.unregister_buffer(pointer)
+        store = self.store
+        assert store is not None
+        return store.unregister_buffer(pointer)
 
     def put_checked(
         self,
@@ -1101,7 +1105,9 @@ class NativeMooncakeStoreAdapter:
         return self.backend.unregister_buffer_checked(pointer)
 
     def batch_get_replica_desc(self, keys):
-        return self.backend.store.batch_get_replica_desc(keys)
+        store = self.backend.store
+        assert store is not None
+        return store.batch_get_replica_desc(keys)
 
     def remove_all(self, force: bool = True) -> None:
         if not force:

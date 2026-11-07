@@ -156,9 +156,7 @@ class NativeWorkerReuseTests(unittest.TestCase):
             {"KVCacheStoreRecvingThread", "_rotate_list", "_sum_batch_bytes"},
             self.namespace,
         )
-        load_classes(
-            STORE / "native_worker.py", {"_AscendTransferContext", "AscendNativeStoreRecvingThread"}, self.namespace
-        )
+        load_classes(STORE / "native_worker.py", {"AscendNativeStoreRecvingThread"}, self.namespace)
         cls = self.namespace["AscendNativeStoreRecvingThread"]
         receiver = cls.__new__(cls)
         receiver.store = self.store
@@ -389,9 +387,7 @@ class NativeWorkerReuseTests(unittest.TestCase):
                 released.append(request)
 
         self.namespace["KVCacheStoreSendingThread"] = UpstreamSender
-        load_classes(
-            STORE / "native_worker.py", {"_AscendTransferContext", "AscendNativeStoreSendingThread"}, self.namespace
-        )
+        load_classes(STORE / "native_worker.py", {"AscendNativeStoreSendingThread"}, self.namespace)
         sender = self.namespace["AscendNativeStoreSendingThread"]()
         sender.store = self.store
         self.backend._completion_unknown = True

@@ -28,28 +28,25 @@ from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.backend.mooncake_b
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.native_cache_views import register_native_cache_views
 
 
-class _AscendTransferContext:
-    def _check_completion(self):
-        self.store.raise_if_failed()
-
+class AscendNativeStoreSendingThread(KVCacheStoreSendingThread):
     def set_finished_request(self, req_id):
-        self._check_completion()
+        self.store.raise_if_failed()
         super().set_finished_request(req_id)
 
-
-class AscendNativeStoreSendingThread(_AscendTransferContext, KVCacheStoreSendingThread):
     def finish_store_job(self, req_meta):
-        # Upstream calls this from finally even when the Store raised. Do not
-        # acknowledge the scheduler's save pin while DMA may still be active.
-        self._check_completion()
+        # Upstream also calls this from finally when a Store operation raises.
+        self.store.raise_if_failed()
         super().finish_store_job(req_meta)
 
 
-class AscendNativeStoreRecvingThread(_AscendTransferContext, KVCacheStoreRecvingThread):
-    pass
+class AscendNativeStoreRecvingThread(KVCacheStoreRecvingThread):
+    def set_finished_request(self, req_id):
+        self.store.raise_if_failed()
+        super().set_finished_request(req_id)
 
 
 class AscendNativeStoreWorker(MooncakeStoreWorker):
+    preferred_segment: str | None
     _supports_host_cache_tp_layout = True
     _sending_thread_cls = AscendNativeStoreSendingThread
     _recving_thread_cls = AscendNativeStoreRecvingThread
