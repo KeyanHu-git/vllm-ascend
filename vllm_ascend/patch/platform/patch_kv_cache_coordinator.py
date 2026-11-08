@@ -7,7 +7,6 @@ from dataclasses import replace
 from math import lcm
 
 import vllm
-import vllm.envs as envs_vllm
 import vllm.v1.core.kv_cache_coordinator as vllm_kv_cache_coordinator
 from vllm.utils.math_utils import cdiv
 from vllm.v1.core.block_pool import BlockPool
@@ -124,15 +123,12 @@ class AscendHybridKVCacheCoordinator(HybridKVCacheCoordinator):
         # behavior. The scheduler always supplies the real value at runtime.
         token_budget = _select_kv_token_budget(max_model_len, max_in_flight_tokens)
         self.max_in_flight_tokens = token_budget
-        if vllm_version_is("0.32.0"):
-            self.retention_interval = envs_vllm.VLLM_PREFIX_CACHE_RETENTION_INTERVAL
-        else:
-            self.retention_interval = kv_cache_config.prefix_cache_retention_interval
-            vllm_kv_cache_coordinator._validate_prefix_cache_retention_interval(
-                self.retention_interval,
-                self.scheduler_block_size,
-                kv_cache_config,
-            )
+        self.retention_interval = kv_cache_config.prefix_cache_retention_interval
+        vllm_kv_cache_coordinator._validate_prefix_cache_retention_interval(
+            self.retention_interval,
+            self.scheduler_block_size,
+            kv_cache_config,
+        )
         self.block_pool = BlockPool(
             num_gpu_blocks=kv_cache_config.num_blocks,
             enable_caching=enable_caching,
@@ -395,7 +391,8 @@ class AscendHybridKVCacheCoordinator(HybridKVCacheCoordinator):
                         and group_block_size > self.hash_block_size
                         else group_block_size
                     )
-                    _max_length = min(curr_hit_length + eagle_margin, max_cache_hit_length)
+                    # The proof block may follow the reusable prefix, as in core.
+                    _max_length = min(curr_hit_length + eagle_margin, len(block_hashes) * self.hash_block_size)
                 hit_result = manager_cls.find_longest_cache_hit(
                     block_hashes=_get_block_hashes(spec),
                     max_length=_max_length,
