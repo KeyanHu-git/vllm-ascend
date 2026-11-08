@@ -145,6 +145,7 @@ class MooncakeConnectorMetadata(KVConnectorMetadata):
     def __init__(self) -> None:
         self.requests: dict[str, ReqMeta] = {}
         self.requests_to_send: dict[str, float] = {}
+        self.finished_sending: set[str] = set()
         self.reqs_in_batch: set[str] = set()
 
     def add_new_req(
